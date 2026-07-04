@@ -1,0 +1,147 @@
+# Player API
+
+The player listens on port `3002` and returns JSON for all control routes. CORS is open for browser clients during local network use.
+
+The player does not talk to the media server directly. The frontend passes streamable track URLs (for example `http://localhost:3001/media/42`) in the queue.
+
+## Status
+
+### `GET /status`
+
+Returns the current playback status.
+
+```json
+{
+  "playing": false,
+  "position_seconds": 0,
+  "duration_seconds": 240,
+  "volume": 1,
+  "current_track": {
+    "url": "http://localhost:3001/media/42",
+    "title": "Example",
+    "artist": "Artist",
+    "composer": "Composer",
+    "date": 2020,
+    "artwork_url": "http://localhost:3001/artwork/7",
+    "duration_seconds": 240
+  },
+  "queue_index": 0,
+  "queue_length": 3
+}
+```
+
+`current_track` is `null` when the queue is empty.
+
+## Queue
+
+### `POST /queue`
+
+Sets or extends the playback queue.
+
+Request body:
+
+```json
+{
+  "tracks": [
+    {
+      "url": "http://localhost:3001/media/42",
+      "title": "Example",
+      "artist": "Artist",
+      "duration_seconds": 240
+    }
+  ],
+  "replace": true
+}
+```
+
+- `replace: true` replaces the entire queue.
+- `replace: false` appends tracks to the existing queue.
+
+Response: current status object.
+
+## Playback Control
+
+### `POST /play`
+
+Starts playback or resumes from pause.
+
+Optional request body:
+
+```json
+{
+  "index": 0
+}
+```
+
+When `index` is provided, playback starts at that queue position. When omitted, playback starts from the current queue index (or resumes the paused track).
+
+Response: current status object.
+
+### `POST /pause`
+
+Pauses the current track.
+
+Response: current status object.
+
+### `POST /seek`
+
+Seeks within the current track.
+
+Request body:
+
+```json
+{
+  "position_seconds": 42
+}
+```
+
+Response: current status object.
+
+### `POST /volume`
+
+Sets playback volume.
+
+Request body:
+
+```json
+{
+  "volume": 0.8
+}
+```
+
+`volume` must be between `0` and `1`.
+
+Response: current status object.
+
+### `POST /next`
+
+Moves to the next track in the queue and starts playback.
+
+Response: current status object.
+
+### `POST /previous`
+
+Moves to the previous track in the queue and starts playback.
+
+Response: current status object.
+
+## WebSocket
+
+### `GET /ws`
+
+Upgrades to a WebSocket connection and streams playback status updates.
+
+The server sends the current status immediately after the connection is established, then pushes a new message whenever playback state changes.
+
+Message shape matches the `GET /status` response.
+
+## Persistence
+
+Player state is stored in `player_state.json` beside the running player executable. The file remembers:
+
+- queue and current queue index
+- paused position within the current track
+- volume
+- whether playback was active
+
+On startup, the queue and position are restored. Playback does not resume automatically until the frontend calls `POST /play`.
