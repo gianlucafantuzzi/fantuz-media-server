@@ -106,7 +106,8 @@ Playlists are stored in the database and managed via the server API. Each playli
 
 A top bar is present at all times and it includes in order:
 * On the left, a "Menu" button. Clicking on the button opens the sidebar which is initially not visible and contains the menu. The sidebar slides into view from left to right. The button simply contains an icon with three horizontal lines, as typical for menu buttons.
-* A dropdown menu with two options: "This device" and "Remote player".
+* A "Home" button that causes the "Home" screen to appear
+* A dropdown menu with two options: "This device" and "Remote player"
     * When on "This device" all playback happens in the browser
     * When on "Remote player" all playback happens on the configured player application
 * At the center the image in ./frontend/images/FantuzMediaServerLogoHorizontal.png. The image is sized in such a way that its height coincides with the height of the whole top bar.

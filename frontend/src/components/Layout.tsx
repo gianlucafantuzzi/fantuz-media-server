@@ -27,6 +27,7 @@ export const Layout: React.FC<LayoutProps> = ({
     <div className="app-container">
       <TopBar
         onMenuClick={() => setSidebarOpen(!sidebarOpen)}
+        onHomeClick={() => onViewChange('home')}
         activeDevice={activeDevice}
         onChangeDevice={onChangeDevice}
         onCastClick={onCastClick}
