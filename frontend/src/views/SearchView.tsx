@@ -8,6 +8,7 @@ interface SearchViewProps {
   onSearch: (query: string) => void;
   onPlayTrack: (track: Track) => void;
   onSelectAlbum: (album: Album) => void;
+  onSelectTrack: (track: Track) => void;
   initialQuery?: string;
 }
 
@@ -34,6 +35,7 @@ export const SearchView: React.FC<SearchViewProps> = ({
   onSearch,
   onPlayTrack,
   onSelectAlbum,
+  onSelectTrack,
   initialQuery = '',
 }) => {
   const [query, setQuery] = useState(initialQuery);
@@ -143,7 +145,7 @@ export const SearchView: React.FC<SearchViewProps> = ({
             {displayedTracks.map((track) => {
               const artworkUrl = `${serverUrl}/artwork/${track.album_id}`;
               return (
-                <div key={track.id} className="track-row">
+                <div key={track.id} className="track-row" onClick={() => onSelectTrack(track)} style={{ cursor: 'pointer' }}>
                   <div className="track-artwork-wrapper">
                     <img
                       src={artworkUrl}
@@ -181,7 +183,10 @@ export const SearchView: React.FC<SearchViewProps> = ({
                   <div className="track-duration">{formatDuration(track.duration_seconds)}</div>
                   <button
                     className="track-play-button"
-                    onClick={() => onPlayTrack(track)}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onPlayTrack(track);
+                    }}
                     aria-label={`Play ${track.title}`}
                   >
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">

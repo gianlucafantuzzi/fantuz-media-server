@@ -4,10 +4,17 @@ import { HomeView } from './views/HomeView';
 import { SettingsView } from './views/SettingsView';
 import { SearchView } from './views/SearchView';
 import { AlbumView } from './views/AlbumView';
+import { TrackView } from './views/TrackView';
 import { EditMetadataView } from './views/EditMetadataView';
 import { PlayerBar } from './components/PlayerBar';
 import { playerService } from './services/playerService';
 import type { Track, Album, PlayerStatus } from './services/playerService';
+
+interface ScreenState {
+  view: string;
+  album?: Album | null;
+  track?: Track | null;
+}
 
 function App() {
   const [activeView, setActiveView] = useState(() => {
@@ -35,6 +42,27 @@ function App() {
   const [selectedAlbum, setSelectedAlbum] = useState<Album | null>(() => {
     const saved = localStorage.getItem('selectedAlbum');
     return saved ? JSON.parse(saved) : null;
+  });
+
+  // Selected Track state for Track view
+  const [selectedTrack, setSelectedTrack] = useState<Track | null>(() => {
+    const saved = localStorage.getItem('selectedTrack');
+    return saved ? JSON.parse(saved) : null;
+  });
+
+  const [screenHistory, setScreenHistory] = useState<ScreenState[]>(() => {
+    const saved = localStorage.getItem('screenHistory');
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch (e) {
+        // Fallback
+      }
+    }
+    const initView = localStorage.getItem('activeView') || 'home';
+    const initAlbum = localStorage.getItem('selectedAlbum') ? JSON.parse(localStorage.getItem('selectedAlbum')!) : null;
+    const initTrack = localStorage.getItem('selectedTrack') ? JSON.parse(localStorage.getItem('selectedTrack')!) : null;
+    return [{ view: initView, album: initAlbum, track: initTrack }];
   });
 
   // Player status state
@@ -108,10 +136,13 @@ function App() {
     }
   }, [activeDevice, selectedPlayer]);
 
-  // Sync active view change to local storage
+  // Sync active view change to local storage (Resetting history for main screens)
   const handleViewChange = (view: string) => {
     setActiveView(view);
     localStorage.setItem('activeView', view);
+    const newHistory = [{ view, album: null, track: null }];
+    setScreenHistory(newHistory);
+    localStorage.setItem('screenHistory', JSON.stringify(newHistory));
   };
 
   const handleDeviceChange = (device: string) => {
@@ -145,7 +176,12 @@ function App() {
           albums: data.albums || [],
           tracks: data.tracks || [],
         });
-        handleViewChange('search');
+        
+        setActiveView('search');
+        localStorage.setItem('activeView', 'search');
+        const newHistory = [{ view: 'search', album: null, track: null }];
+        setScreenHistory(newHistory);
+        localStorage.setItem('screenHistory', JSON.stringify(newHistory));
       })
       .catch((err) => {
         console.error('Search failed:', err);
@@ -170,7 +206,54 @@ function App() {
   const handleSelectAlbum = (album: Album) => {
     setSelectedAlbum(album);
     localStorage.setItem('selectedAlbum', JSON.stringify(album));
-    handleViewChange('album');
+
+    const nextHistory = [...screenHistory, { view: 'album', album, track: null }];
+    setScreenHistory(nextHistory);
+    localStorage.setItem('screenHistory', JSON.stringify(nextHistory));
+
+    setActiveView('album');
+    localStorage.setItem('activeView', 'album');
+  };
+
+  const handleSelectTrack = (track: Track) => {
+    setSelectedTrack(track);
+    localStorage.setItem('selectedTrack', JSON.stringify(track));
+
+    const nextHistory = [...screenHistory, { view: 'track', album: selectedAlbum, track }];
+    setScreenHistory(nextHistory);
+    localStorage.setItem('screenHistory', JSON.stringify(nextHistory));
+
+    setActiveView('track');
+    localStorage.setItem('activeView', 'track');
+  };
+
+  const handleNavigateBack = () => {
+    if (screenHistory.length <= 1) {
+      handleViewChange('home');
+      return;
+    }
+
+    const nextHistory = screenHistory.slice(0, -1);
+    setScreenHistory(nextHistory);
+    localStorage.setItem('screenHistory', JSON.stringify(nextHistory));
+
+    const prevScreen = nextHistory[nextHistory.length - 1];
+    setActiveView(prevScreen.view);
+    localStorage.setItem('activeView', prevScreen.view);
+
+    setSelectedAlbum(prevScreen.album || null);
+    if (prevScreen.album) {
+      localStorage.setItem('selectedAlbum', JSON.stringify(prevScreen.album));
+    } else {
+      localStorage.removeItem('selectedAlbum');
+    }
+
+    setSelectedTrack(prevScreen.track || null);
+    if (prevScreen.track) {
+      localStorage.setItem('selectedTrack', JSON.stringify(prevScreen.track));
+    } else {
+      localStorage.removeItem('selectedTrack');
+    }
   };
 
   const handleTogglePlay = () => {
@@ -202,6 +285,7 @@ function App() {
             onSearch={handleSearch}
             onPlayTrack={handlePlayTrack}
             onSelectAlbum={handleSelectAlbum}
+            onSelectTrack={handleSelectTrack}
             initialQuery={searchQuery}
           />
         );
@@ -210,7 +294,22 @@ function App() {
           <AlbumView
             album={selectedAlbum}
             serverUrl={selectedServer}
-            onBack={() => handleViewChange('search')}
+            onBack={handleNavigateBack}
+            onPlayTracks={handlePlayTracks}
+            onQueueTracks={handleQueueTracks}
+            onSelectTrack={handleSelectTrack}
+          />
+        ) : (
+          <HomeView onSearch={handleSearch} />
+        );
+      case 'track':
+        return selectedTrack ? (
+          <TrackView
+            track={selectedTrack}
+            serverUrl={selectedServer}
+            onBack={handleNavigateBack}
+            onSelectAlbum={handleSelectAlbum}
+            onSelectTrack={handleSelectTrack}
             onPlayTracks={handlePlayTracks}
             onQueueTracks={handleQueueTracks}
           />

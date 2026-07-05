@@ -145,7 +145,7 @@ The "Search Results" screen features at the top the same search bar present in t
 
 * When more than 10 albums are found, a "View more" button is displayed and by pressing it 10 more cards are added to the section. When all the results have been displayed, the button is no longer shown.
 
-* The list of results displayed in the "Albums" section is built by finding entries in the "albums" table of the databse that match the search string in the following rows (strictly in this order):
+* The list of results displayed in the "Albums" section is built by finding entries in the "albums" table of the database that match the search string in the following rows (strictly in this order):
     * title
     * album_artist
 
@@ -160,6 +160,8 @@ The "Search Results" screen features at the top the same search bar present in t
     * artist
     * composer
     * keywords (taken from the "track_keywords" table)
+
+* Clicking on the area of a track, opens the "Track" screen on the selected track
 
 #### Album Screen
 
@@ -193,7 +195,43 @@ The "Album" screen is used to provide all information about an album and playbac
     * duration
     * A play icon that empties the player queue, adds the track to it and triggers the playback
     * An "add to queue" icon that adds the track to the player queue
+
+* Clicking on the area of a track, opens the "Track" screen on the selected track
     
+#### Track Screen
+
+The "Track" screen is used to provide all information about a track and play it back. The following is included.
+
+* A header area containing the following:
+
+    * On the left, a "Previous track" button that opens the "Track" screen on the track that precedes the current track in the album. If this is the first track of the first disc of the album, the button is disabled.
+    * At the center, the following from top to bottom (if a field becomes too long, it is truncated and an ellipsis is added):
+        * The title
+        * The artist
+    * On the right, a "Next track" button that opens the "Track" screen on the track that follows the current track in the album. If this is the last track of the last disc of the album, the button is disabled.
+    
+    * Anchored to the far right of the header, a left arrow that sends you back to the previous screen
+    
+* Under the header, the area on the screen is split into two panels.
+
+* The left panel, contains the following from top to bottom (if a field becomes too long, it is truncated and an ellipsis is added):
+    * If present, the composer
+    * The year
+    * The duration of the track
+    * If there is a "total discs" value greater than 1, then the "disc number" followed by a slash and the "total discs"
+    * The "track number" followed by a slash and the "total tracks"
+    * The keyword boxes associated with the track. They are displayed horizontally and, if necessary, on multiple lines.
+    * Two buttons laid horizontally one after the other:
+        * A "Play" button - when pressed, it empties the player queue, adds the track to the player queue, and triggers the playback
+        * An "Add to queue" button - when pressed, it the track to the player queue
+
+* The right panel contains the following from top to bottom (if a field becomes too long, it is truncated and an ellipsis is added):
+    * The artwork - clicking on the artwork results in opening the "Album" screen on the album the track belongs to.
+    * The album title
+    * The album artist
+
+* The left arrow back button in the "Album" and "Track" screens goes through all the history of previous screens until it lands on a main screen (for example the "Search Results" or the "Home screen).
+
 #### Player Bar
 
 * The "Player Bar" is located at the bottom of the screen and displays:

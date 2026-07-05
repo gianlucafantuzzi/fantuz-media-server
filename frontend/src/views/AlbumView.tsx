@@ -8,6 +8,7 @@ interface AlbumViewProps {
   onBack: () => void;
   onPlayTracks: (tracks: Track[], startIndex?: number) => void;
   onQueueTracks: (tracks: Track[]) => void;
+  onSelectTrack: (track: Track) => void;
 }
 
 export const AlbumView: React.FC<AlbumViewProps> = ({
@@ -16,6 +17,7 @@ export const AlbumView: React.FC<AlbumViewProps> = ({
   onBack,
   onPlayTracks,
   onQueueTracks,
+  onSelectTrack,
 }) => {
   const [tracks, setTracks] = useState<Track[]>([]);
   const [loading, setLoading] = useState(true);
@@ -211,7 +213,12 @@ export const AlbumView: React.FC<AlbumViewProps> = ({
                 )}
                 <div className="tracks-list">
                   {discTracks.map((track) => (
-                    <div key={track.id} className="track-row" style={{ padding: '8px 12px' }}>
+                    <div 
+                      key={track.id} 
+                      className="track-row" 
+                      onClick={() => onSelectTrack(track)} 
+                      style={{ padding: '8px 12px', cursor: 'pointer' }}
+                    >
                       <div style={{ width: '28px', color: 'var(--text-muted)', fontSize: '13px', textAlign: 'center', flexShrink: 0 }}>
                         {track.track_number}
                       </div>
@@ -229,7 +236,10 @@ export const AlbumView: React.FC<AlbumViewProps> = ({
                       <div style={{ display: 'flex', gap: '4px', flexShrink: 0 }}>
                         <button
                           className="track-play-button"
-                          onClick={() => onPlayTracks(sortedTracks, sortedTracks.indexOf(track))}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onPlayTracks(sortedTracks, sortedTracks.indexOf(track));
+                          }}
                           aria-label={`Play ${track.title}`}
                         >
                           <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
@@ -238,7 +248,10 @@ export const AlbumView: React.FC<AlbumViewProps> = ({
                         </button>
                         <button
                           className="track-play-button"
-                          onClick={() => onQueueTracks([track])}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onQueueTracks([track]);
+                          }}
                           aria-label={`Add ${track.title} to queue`}
                           style={{ padding: '8px' }}
                         >
