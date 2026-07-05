@@ -267,8 +267,8 @@ The screen is divided into three tabs: "Add/Remove tags", "Edit track metadata" 
     * An "Edit keywords" area that has:
         * on the left, the keywords that are common to all the tracks of all the albums currently selected. The keywords are displayed in their typical boxes horizontally and, if needed, there can be multiple lines of them. 
         * on the right, two buttons:
-            * "Add keyword" - only active when at least one album card is selected. When pressed, a panel is opened containing a text box to input the desired keyword. The panel also displays a list of existing keywords (in their typical boxes)that can be used as a shortcut to populate the text box. On pressing OK, the keyword is added to all the tracks of all the selected albums. This is done by calling the server API.
-            * "Remove keyword(s)" - only active when at least one keyword is selected. When pressed it opens a message asking for confirmation and then proceeds to remove one by one the selected keywords from all the tracks of all the selected albums. This is done by calling the server API.
+            * "Add tag" - only active when at least one album card is selected. When pressed, a panel is opened containing a text box to input the desired keyword. The panel also displays a list of existing keywords (in their typical boxes)that can be used as a shortcut to populate the text box. On pressing OK, the keyword is added to all the tracks of all the selected albums. This is done by calling the server API.
+            * "Remove tag(s)" - only active when at least one keyword is selected. When pressed it opens a message asking for confirmation and then proceeds to remove one by one the selected keywords from all the tracks of all the selected albums. This is done by calling the server API.
 
 
 #### Playlists Screen

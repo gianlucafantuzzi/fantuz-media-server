@@ -8,7 +8,7 @@ interface EditMetadataViewProps {
 
 export const EditMetadataView: React.FC<EditMetadataViewProps> = ({ serverUrl }) => {
 	const [activeTab, setActiveTab] = useState<'add-remove' | 'edit-track' | 'edit-album'>('add-remove');
-	
+
 	// Library data
 	const [albums, setAlbums] = useState<Album[]>([]);
 	const [tracks, setTracks] = useState<Track[]>([]);
@@ -71,7 +71,7 @@ export const EditMetadataView: React.FC<EditMetadataViewProps> = ({ serverUrl })
 			filtered = filtered.filter(album => {
 				const albumTitle = (album.title || '').toLowerCase();
 				const albumArtist = (album.album_artist || '').toLowerCase();
-				
+
 				// Get album tracks
 				const albumTracks = tracks.filter(t => t.album_id === album.id);
 				const matchesTrack = albumTracks.some(track => {
@@ -79,9 +79,9 @@ export const EditMetadataView: React.FC<EditMetadataViewProps> = ({ serverUrl })
 					const artist = (track.artist || '').toLowerCase();
 					const composer = (track.composer || '').toLowerCase();
 					const kws = track.keywords || [];
-					return title.includes(query) || 
-						artist.includes(query) || 
-						composer.includes(query) || 
+					return title.includes(query) ||
+						artist.includes(query) ||
+						composer.includes(query) ||
 						kws.some(k => k.toLowerCase().includes(query));
 				});
 
@@ -109,7 +109,7 @@ export const EditMetadataView: React.FC<EditMetadataViewProps> = ({ serverUrl })
 			filtered = filtered.filter(album => {
 				const albumTracks = tracks.filter(t => t.album_id === album.id);
 				if (albumTracks.length === 0) return true;
-				
+
 				const allTracksHaveExcludeKeyword = albumTracks.every(track => {
 					const trackKws = track.keywords || [];
 					return trackKws.some(kw => excludedKeywords.includes(kw));
@@ -138,7 +138,7 @@ export const EditMetadataView: React.FC<EditMetadataViewProps> = ({ serverUrl })
 			return [];
 		}
 		const firstTrackKws = selectedTracks[0].keywords || [];
-		return firstTrackKws.filter(kw => 
+		return firstTrackKws.filter(kw =>
 			selectedTracks.every(t => t.keywords && t.keywords.includes(kw))
 		);
 	};
@@ -205,12 +205,12 @@ export const EditMetadataView: React.FC<EditMetadataViewProps> = ({ serverUrl })
 				const data = await res.json();
 				throw new Error(data.error || 'Failed to add keyword');
 			}
-			
+
 			// Trigger DB scan and refetch data
 			triggerScan();
 			await fetchData();
 			setSelectedAlbumIds([]);
-			
+
 			// Reset inputs
 			setNewKeywordInput('');
 			setShowAddModal(false);
@@ -256,16 +256,16 @@ export const EditMetadataView: React.FC<EditMetadataViewProps> = ({ serverUrl })
 	return (
 		<div className="edit-metadata-container" style={{ width: '100%', paddingBottom: '80px' }}>
 			{/* Header Tab Bar */}
-			<div 
-				style={{ 
-					display: 'flex', 
-					gap: '24px', 
-					borderBottom: '1px solid var(--border-color)', 
+			<div
+				style={{
+					display: 'flex',
+					gap: '24px',
+					borderBottom: '1px solid var(--border-color)',
 					marginBottom: '32px',
 					paddingBottom: '8px'
 				}}
 			>
-				<button 
+				<button
 					onClick={() => setActiveTab('add-remove')}
 					style={{
 						background: 'none',
@@ -283,7 +283,7 @@ export const EditMetadataView: React.FC<EditMetadataViewProps> = ({ serverUrl })
 						<div style={{ position: 'absolute', bottom: '-9px', left: 0, right: 0, height: '2px', backgroundColor: 'var(--accent)' }} />
 					)}
 				</button>
-				<button 
+				<button
 					onClick={() => setActiveTab('edit-track')}
 					style={{
 						background: 'none',
@@ -301,7 +301,7 @@ export const EditMetadataView: React.FC<EditMetadataViewProps> = ({ serverUrl })
 						<div style={{ position: 'absolute', bottom: '-9px', left: 0, right: 0, height: '2px', backgroundColor: 'var(--accent)' }} />
 					)}
 				</button>
-				<button 
+				<button
 					onClick={() => setActiveTab('edit-album')}
 					style={{
 						background: 'none',
@@ -446,8 +446,8 @@ export const EditMetadataView: React.FC<EditMetadataViewProps> = ({ serverUrl })
 										: '';
 
 									return (
-										<div 
-											key={album.id} 
+										<div
+											key={album.id}
 											className="album-card"
 											onClick={() => handleToggleAlbumSelection(album.id)}
 											style={{
@@ -460,14 +460,14 @@ export const EditMetadataView: React.FC<EditMetadataViewProps> = ({ serverUrl })
 										>
 											{/* Selected indicator overlay */}
 											{isSelected && (
-												<div 
-													style={{ 
-														position: 'absolute', 
-														top: '8px', 
-														right: '8px', 
-														backgroundColor: 'var(--accent)', 
-														borderRadius: '50%', 
-														width: '24px', 
+												<div
+													style={{
+														position: 'absolute',
+														top: '8px',
+														right: '8px',
+														backgroundColor: 'var(--accent)',
+														borderRadius: '50%',
+														width: '24px',
 														height: '24px',
 														display: 'flex',
 														alignItems: 'center',
@@ -506,8 +506,8 @@ export const EditMetadataView: React.FC<EditMetadataViewProps> = ({ serverUrl })
 
 						{filteredAlbums.length > albumLimit && (
 							<div style={{ display: 'flex', justifyContent: 'center', marginTop: '32px' }}>
-								<button 
-									className="btn-primary" 
+								<button
+									className="btn-primary"
 									onClick={() => setAlbumLimit(prev => prev + 20)}
 								>
 									View more
@@ -517,13 +517,13 @@ export const EditMetadataView: React.FC<EditMetadataViewProps> = ({ serverUrl })
 					</div>
 
 					{/* Edit Keywords Area at bottom */}
-					<div 
-						style={{ 
-							display: 'flex', 
-							justifyContent: 'space-between', 
+					<div
+						style={{
+							display: 'flex',
+							justifyContent: 'space-between',
 							alignItems: 'flex-start',
-							padding: '24px', 
-							backgroundColor: 'var(--bg-panel)', 
+							padding: '24px',
+							backgroundColor: 'var(--bg-panel)',
 							borderRadius: '12px',
 							border: '1px solid var(--border-color)',
 							gap: '32px'
@@ -576,24 +576,24 @@ export const EditMetadataView: React.FC<EditMetadataViewProps> = ({ serverUrl })
 
 						{/* Right: Buttons */}
 						<div style={{ display: 'flex', gap: '12px', flexShrink: 0 }}>
-							<button 
+							<button
 								className="btn-primary"
 								disabled={selectedAlbumIds.length === 0}
 								onClick={() => setShowAddModal(true)}
 								style={{ opacity: selectedAlbumIds.length === 0 ? 0.5 : 1 }}
 							>
-								Add keyword
+								Add tag
 							</button>
-							<button 
+							<button
 								className="btn-primary"
-								style={{ 
+								style={{
 									border: '1px solid var(--border-color)',
 									opacity: selectedKeywordsForRemoval.length === 0 ? 0.5 : 1
 								}}
 								disabled={selectedKeywordsForRemoval.length === 0}
 								onClick={() => setShowRemoveModal(true)}
 							>
-								Remove keyword(s)
+								Remove tag(s)
 							</button>
 						</div>
 					</div>
@@ -608,26 +608,26 @@ export const EditMetadataView: React.FC<EditMetadataViewProps> = ({ serverUrl })
 
 			{/* Add Tag Modal */}
 			{showAddModal && (
-				<div 
-					style={{ 
-						position: 'fixed', 
-						top: 0, 
-						left: 0, 
-						right: 0, 
-						bottom: 0, 
-						backgroundColor: 'rgba(0, 0, 0, 0.6)', 
-						display: 'flex', 
-						alignItems: 'center', 
-						justifyContent: 'center', 
-						zIndex: 1000 
+				<div
+					style={{
+						position: 'fixed',
+						top: 0,
+						left: 0,
+						right: 0,
+						bottom: 0,
+						backgroundColor: 'rgba(0, 0, 0, 0.6)',
+						display: 'flex',
+						alignItems: 'center',
+						justifyContent: 'center',
+						zIndex: 1000
 					}}
 				>
-					<div 
-						style={{ 
-							backgroundColor: 'var(--bg-panel)', 
-							padding: '32px', 
-							borderRadius: '12px', 
-							width: '100%', 
+					<div
+						style={{
+							backgroundColor: 'var(--bg-panel)',
+							padding: '32px',
+							borderRadius: '12px',
+							width: '100%',
 							maxWidth: '480px',
 							border: '1px solid var(--border-color)',
 							boxShadow: '0 8px 32px rgba(0,0,0,0.4)'
@@ -678,16 +678,16 @@ export const EditMetadataView: React.FC<EditMetadataViewProps> = ({ serverUrl })
 							</div>
 
 							<div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
-								<button 
+								<button
 									type="button"
-									className="btn-primary" 
+									className="btn-primary"
 									style={{ border: '1px solid var(--border-color)', backgroundColor: 'transparent' }}
 									onClick={() => setShowAddModal(false)}
 									disabled={submitting}
 								>
 									Cancel
 								</button>
-								<button 
+								<button
 									type="submit"
 									className="btn-primary"
 									disabled={submitting || !newKeywordInput.trim()}
@@ -702,26 +702,26 @@ export const EditMetadataView: React.FC<EditMetadataViewProps> = ({ serverUrl })
 
 			{/* Remove Confirmation Modal */}
 			{showRemoveModal && (
-				<div 
-					style={{ 
-						position: 'fixed', 
-						top: 0, 
-						left: 0, 
-						right: 0, 
-						bottom: 0, 
-						backgroundColor: 'rgba(0, 0, 0, 0.6)', 
-						display: 'flex', 
-						alignItems: 'center', 
-						justifyContent: 'center', 
-						zIndex: 1000 
+				<div
+					style={{
+						position: 'fixed',
+						top: 0,
+						left: 0,
+						right: 0,
+						bottom: 0,
+						backgroundColor: 'rgba(0, 0, 0, 0.6)',
+						display: 'flex',
+						alignItems: 'center',
+						justifyContent: 'center',
+						zIndex: 1000
 					}}
 				>
-					<div 
-						style={{ 
-							backgroundColor: 'var(--bg-panel)', 
-							padding: '32px', 
-							borderRadius: '12px', 
-							width: '100%', 
+					<div
+						style={{
+							backgroundColor: 'var(--bg-panel)',
+							padding: '32px',
+							borderRadius: '12px',
+							width: '100%',
 							maxWidth: '480px',
 							border: '1px solid var(--border-color)',
 							boxShadow: '0 8px 32px rgba(0,0,0,0.4)'
@@ -734,15 +734,15 @@ export const EditMetadataView: React.FC<EditMetadataViewProps> = ({ serverUrl })
 							Are you sure you want to remove the keyword(s) <strong>{selectedKeywordsForRemoval.join(', ')}</strong> from all tracks in the <strong>{selectedAlbumIds.length}</strong> selected album(s)? This will modify the files' metadata.
 						</p>
 						<div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
-							<button 
-								className="btn-primary" 
+							<button
+								className="btn-primary"
 								style={{ border: '1px solid var(--border-color)', backgroundColor: 'transparent' }}
 								onClick={() => setShowRemoveModal(false)}
 								disabled={submitting}
 							>
 								Cancel
 							</button>
-							<button 
+							<button
 								className="btn-primary"
 								style={{ backgroundColor: '#ef4444', borderColor: '#ef4444' }}
 								onClick={handleRemoveKeywordsConfirm}
