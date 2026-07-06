@@ -5,10 +5,12 @@ import (
 	"errors"
 	"io"
 	"os"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
 
+	"github.com/bogem/id3v2/v2"
 	"github.com/dhowden/tag"
 )
 
@@ -47,57 +49,197 @@ func (TagParser) Parse(path string) (TrackMetadata, error) {
 
 	// Check if file starts with ID3v2
 	header := make([]byte, 10)
-	var seeker io.ReadSeeker = file
+	isID3 := false
+	id3Size := 0
 	if _, err := io.ReadFull(file, header); err == nil && string(header[:3]) == "ID3" {
-		id3Size := 10 + (int(header[6]&0x7f)<<21 | int(header[7]&0x7f)<<14 | int(header[8]&0x7f)<<7 | int(header[9]&0x7f))
-		if _, err := file.Seek(int64(id3Size), io.SeekStart); err == nil {
-			flacCheck := make([]byte, 4)
-			if _, err := io.ReadFull(file, flacCheck); err == nil && string(flacCheck) == "fLaC" {
-				// It's a FLAC file with prepended ID3v2 tags!
-				// Keep position at start of FLAC block (id3Size) for tag parsing
-				file.Seek(int64(id3Size), io.SeekStart)
-				seeker = offsetReadSeeker{r: file, offset: int64(id3Size)}
+		isID3 = true
+		id3Size = 10 + (int(header[6]&0x7f)<<21 | int(header[7]&0x7f)<<14 | int(header[8]&0x7f)<<7 | int(header[9]&0x7f))
+	}
+	file.Seek(0, io.SeekStart)
+
+	isMP3 := isID3 || strings.ToLower(filepath.Ext(path)) == ".mp3"
+
+	var title, artist, album, albumArtist, composer, genre string
+	var date, discNumber, totalDiscs, trackNumber, totalTracks int
+	var keywords []string
+	var artwork *Artwork
+	var raw map[string]interface{}
+
+	parsedWithBogem := false
+
+	if isMP3 {
+		// Use bogem as the primary parser for MP3
+		tagObj, err := id3v2.Open(path, id3v2.Options{Parse: true})
+		if err == nil {
+			defer tagObj.Close()
+			parsedWithBogem = true
+			title = tagObj.Title()
+			artist = tagObj.Artist()
+			album = tagObj.Album()
+			albumArtist = tagObj.GetTextFrame("TPE2").Text
+			if albumArtist == "" {
+				albumArtist = artist
+			}
+			genre = tagObj.Genre()
+			if yearInt, convErr := strconv.Atoi(tagObj.Year()); convErr == nil {
+				date = yearInt
+			}
+
+			// Extract track number and total tracks
+			tr := tagObj.GetTextFrame("TRCK")
+			if tr.Text != "" {
+				parts := strings.Split(tr.Text, "/")
+				if len(parts) >= 1 {
+					if val, parseErr := strconv.Atoi(parts[0]); parseErr == nil {
+						trackNumber = val
+					}
+				}
+				if len(parts) >= 2 {
+					if val, parseErr := strconv.Atoi(parts[1]); parseErr == nil {
+						totalTracks = val
+					}
+				}
+			}
+
+			// Extract disc number and total discs
+			pos := tagObj.GetTextFrame("TPOS")
+			if pos.Text != "" {
+				parts := strings.Split(pos.Text, "/")
+				if len(parts) >= 1 {
+					if val, parseErr := strconv.Atoi(parts[0]); parseErr == nil {
+						discNumber = val
+					}
+				}
+				if len(parts) >= 2 {
+					if val, parseErr := strconv.Atoi(parts[1]); parseErr == nil {
+						totalDiscs = val
+					}
+				}
+			}
+
+			// Extract composer
+			comp := tagObj.GetTextFrame(tagObj.CommonID("Composer"))
+			composer = comp.Text
+
+			// Extract keywords and other custom user-defined frames
+			txxxFrames := tagObj.GetFrames("TXXX")
+			for _, f := range txxxFrames {
+				if udtf, ok := f.(id3v2.UserDefinedTextFrame); ok {
+					descLower := strings.ToLower(strings.TrimSpace(udtf.Description))
+					if descLower == "keywords" {
+						for _, part := range strings.Split(udtf.Value, ",") {
+							part = strings.TrimSpace(part)
+							if part != "" {
+								keywords = append(keywords, part)
+							}
+						}
+					} else if descLower == "total tracks" || descLower == "totaltracks" {
+						if val, err := strconv.Atoi(strings.TrimSpace(udtf.Value)); err == nil {
+							totalTracks = val
+						}
+					} else if descLower == "total discs" || descLower == "totaldiscs" {
+						if val, err := strconv.Atoi(strings.TrimSpace(udtf.Value)); err == nil {
+							totalDiscs = val
+						}
+					} else if descLower == "track number" || descLower == "tracknumber" {
+						if val, err := strconv.Atoi(strings.TrimSpace(udtf.Value)); err == nil {
+							trackNumber = val
+						}
+					} else if descLower == "disc number" || descLower == "discnumber" {
+						if val, err := strconv.Atoi(strings.TrimSpace(udtf.Value)); err == nil {
+							discNumber = val
+						}
+					}
+				}
+			}
+
+			// Extract artwork/picture
+			pics := tagObj.GetFrames(tagObj.CommonID("Attached picture"))
+			if len(pics) > 0 {
+				if pic, ok := pics[0].(id3v2.PictureFrame); ok {
+					ext := "jpg"
+					if strings.Contains(strings.ToLower(pic.MimeType), "png") {
+						ext = "png"
+					}
+					artwork = &Artwork{
+						Ext:      ext,
+						MIMEType: pic.MimeType,
+						Data:     pic.Picture,
+					}
+				}
+			}
+		}
+	}
+
+	// Only invoke dhowden if it's not MP3, or bogem failed, or bogem succeeded but artwork was not picked up correctly
+	if !parsedWithBogem || artwork == nil {
+		var seeker io.ReadSeeker = file
+		if isID3 {
+			if _, err := file.Seek(int64(id3Size), io.SeekStart); err == nil {
+				flacCheck := make([]byte, 4)
+				if _, err := io.ReadFull(file, flacCheck); err == nil && string(flacCheck) == "fLaC" {
+					file.Seek(int64(id3Size), io.SeekStart)
+					seeker = offsetReadSeeker{r: file, offset: int64(id3Size)}
+				} else {
+					file.Seek(0, io.SeekStart)
+				}
 			} else {
-				// Not a FLAC file, reset position to start
 				file.Seek(0, io.SeekStart)
 			}
 		} else {
 			file.Seek(0, io.SeekStart)
 		}
-	} else {
-		file.Seek(0, io.SeekStart)
+
+		metadata, err := tag.ReadFrom(seeker)
+		if err == nil {
+			raw = metadata.Raw()
+			if !parsedWithBogem {
+				title = metadata.Title()
+				artist = metadata.Artist()
+				album = metadata.Album()
+				albumArtist = metadata.AlbumArtist()
+				composer = metadata.Composer()
+				genre = metadata.Genre()
+				date = metadata.Year()
+				trackNumber, totalTracks = metadata.Track()
+				discNumber, totalDiscs = metadata.Disc()
+				keywords = KeywordsFromRaw(raw)
+			}
+
+			if picture := metadata.Picture(); picture != nil {
+				artwork = &Artwork{
+					Ext:      picture.Ext,
+					MIMEType: picture.MIMEType,
+					Data:     picture.Data,
+				}
+			}
+		} else if !parsedWithBogem {
+			return TrackMetadata{}, err
+		}
 	}
 
-	metadata, err := tag.ReadFrom(seeker)
-	if err != nil {
-		return TrackMetadata{}, err
+	stat, errStat := file.Stat()
+	if errStat != nil {
+		return TrackMetadata{}, errStat
 	}
 
-	stat, err := file.Stat()
-	if err != nil {
-		return TrackMetadata{}, err
-	}
-
-	durationSeconds := durationForFile(file, metadata.Raw())
-
-	trackNumber, totalTracks := metadata.Track()
-	discNumber, totalDiscs := metadata.Disc()
+	durationSeconds := durationForFile(file, raw)
 
 	parsed := TrackMetadata{
 		FilePath:        path,
-		Title:           metadata.Title(),
-		Artist:          metadata.Artist(),
-		Album:           metadata.Album(),
-		AlbumArtist:     metadata.AlbumArtist(),
+		Title:           title,
+		Artist:          artist,
+		Album:           album,
+		AlbumArtist:     albumArtist,
 		DurationSeconds: durationSeconds,
-		Composer:        metadata.Composer(),
-		Genre:           metadata.Genre(),
-		Date:            metadata.Year(),
+		Composer:        composer,
+		Genre:           genre,
+		Date:            date,
 		DiscNumber:      discNumber,
 		TotalDiscs:      totalDiscs,
 		TrackNumber:     trackNumber,
 		TotalTracks:     totalTracks,
-		Keywords:        KeywordsFromRaw(metadata.Raw()),
+		Keywords:        keywords,
 		LastModified:    unixModTime(stat.ModTime()),
 	}
 
@@ -108,13 +250,7 @@ func (TagParser) Parse(path string) (TrackMetadata, error) {
 		parsed.AlbumArtist = parsed.Artist
 	}
 
-	if picture := metadata.Picture(); picture != nil {
-		parsed.Artwork = &Artwork{
-			Ext:      picture.Ext,
-			MIMEType: picture.MIMEType,
-			Data:     picture.Data,
-		}
-	}
+	parsed.Artwork = artwork
 
 	return parsed, nil
 }
