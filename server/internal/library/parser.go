@@ -16,6 +16,26 @@ type Parser interface {
 	Parse(path string) (TrackMetadata, error)
 }
 
+type offsetReadSeeker struct {
+	r      io.ReadSeeker
+	offset int64
+}
+
+func (o offsetReadSeeker) Read(p []byte) (n int, err error) {
+	return o.r.Read(p)
+}
+
+func (o offsetReadSeeker) Seek(offset int64, whence int) (int64, error) {
+	if whence == io.SeekStart {
+		offset += o.offset
+	}
+	pos, err := o.r.Seek(offset, whence)
+	if err != nil {
+		return 0, err
+	}
+	return pos - o.offset, nil
+}
+
 type TagParser struct{}
 
 func (TagParser) Parse(path string) (TrackMetadata, error) {
@@ -25,7 +45,30 @@ func (TagParser) Parse(path string) (TrackMetadata, error) {
 	}
 	defer file.Close()
 
-	metadata, err := tag.ReadFrom(file)
+	// Check if file starts with ID3v2
+	header := make([]byte, 10)
+	var seeker io.ReadSeeker = file
+	if _, err := io.ReadFull(file, header); err == nil && string(header[:3]) == "ID3" {
+		id3Size := 10 + (int(header[6]&0x7f)<<21 | int(header[7]&0x7f)<<14 | int(header[8]&0x7f)<<7 | int(header[9]&0x7f))
+		if _, err := file.Seek(int64(id3Size), io.SeekStart); err == nil {
+			flacCheck := make([]byte, 4)
+			if _, err := io.ReadFull(file, flacCheck); err == nil && string(flacCheck) == "fLaC" {
+				// It's a FLAC file with prepended ID3v2 tags!
+				// Keep position at start of FLAC block (id3Size) for tag parsing
+				file.Seek(int64(id3Size), io.SeekStart)
+				seeker = offsetReadSeeker{r: file, offset: int64(id3Size)}
+			} else {
+				// Not a FLAC file, reset position to start
+				file.Seek(0, io.SeekStart)
+			}
+		} else {
+			file.Seek(0, io.SeekStart)
+		}
+	} else {
+		file.Seek(0, io.SeekStart)
+	}
+
+	metadata, err := tag.ReadFrom(seeker)
 	if err != nil {
 		return TrackMetadata{}, err
 	}
@@ -194,15 +237,19 @@ func durationForFile(r io.ReadSeeker, raw map[string]interface{}) int {
 	if err != nil || len(data) == 0 {
 		return 0
 	}
+
+	offset := skipID3v2(data)
+	remaining := data[offset:]
+
 	switch {
-	case len(data) >= 4 && string(data[:4]) == "fLaC":
-		return flacDurationSeconds(data)
-	case len(data) >= 4 && string(data[:4]) == "OggS":
-		return oggVorbisDurationSeconds(data)
-	case len(data) >= 8 && string(data[4:8]) == "ftyp":
-		return mp4DurationSeconds(data)
+	case len(remaining) >= 4 && string(remaining[:4]) == "fLaC":
+		return flacDurationSeconds(remaining)
+	case len(remaining) >= 4 && string(remaining[:4]) == "OggS":
+		return oggVorbisDurationSeconds(remaining)
+	case len(remaining) >= 8 && string(remaining[4:8]) == "ftyp":
+		return mp4DurationSeconds(remaining)
 	default:
-		return mp3DurationSeconds(data)
+		return mp3DurationSeconds(remaining)
 	}
 }
 

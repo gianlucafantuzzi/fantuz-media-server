@@ -74,6 +74,22 @@ func TestDurationForFileReadsMP4MovieHeader(t *testing.T) {
 	}
 }
 
+func TestDurationForFileReadsFLACWithPrependedID3(t *testing.T) {
+	flacBytes := makeFLAC(44100, 88200)
+	
+	// Create an ID3v2 header of 10 bytes plus 4 bytes payload
+	id3Header := []byte("ID3\x04\x00\x00\x00\x00\x00\x04") // size: 4
+	id3Payload := []byte("test")
+	
+	fullData := append(id3Header, id3Payload...)
+	fullData = append(fullData, flacBytes...)
+	
+	got := durationForFile(bytes.NewReader(fullData), nil)
+	if got != 2 {
+		t.Fatalf("durationForFile FLAC with ID3 = %d, want 2", got)
+	}
+}
+
 func makeMP3Frame(header uint32) []byte {
 	frame, ok := parseMP3Frame(header)
 	if !ok {
