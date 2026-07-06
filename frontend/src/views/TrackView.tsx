@@ -179,20 +179,24 @@ export const TrackView: React.FC<TrackViewProps> = ({
                 <span style={{ color: 'var(--text-muted)' }}>Composer:</span> {track.composer}
               </div>
             )}
-            <div style={{ fontSize: '15px', color: 'var(--text-secondary)' }}>
-              <span style={{ color: 'var(--text-muted)' }}>Year:</span> {track.date || 'Unknown'}
-            </div>
+            {(track.date ?? 0) > 0 && (
+              <div style={{ fontSize: '15px', color: 'var(--text-secondary)' }}>
+                <span style={{ color: 'var(--text-muted)' }}>Year:</span> {track.date}
+              </div>
+            )}
             <div style={{ fontSize: '15px', color: 'var(--text-secondary)' }}>
               <span style={{ color: 'var(--text-muted)' }}>Duration:</span> {formatDuration(track.duration_seconds)}
             </div>
-            {track.total_discs && track.total_discs > 1 && (
+            {(track.disc_number ?? 0) > 0 && (track.total_discs ?? 0) > 1 && (
               <div style={{ fontSize: '15px', color: 'var(--text-secondary)' }}>
                 <span style={{ color: 'var(--text-muted)' }}>Disc:</span> {track.disc_number}/{track.total_discs}
               </div>
             )}
-            <div style={{ fontSize: '15px', color: 'var(--text-secondary)' }}>
-              <span style={{ color: 'var(--text-muted)' }}>Track:</span> {track.track_number}/{track.total_tracks || track.track_number}
-            </div>
+            {(track.track_number ?? 0) > 0 && (
+              <div style={{ fontSize: '15px', color: 'var(--text-secondary)' }}>
+                <span style={{ color: 'var(--text-muted)' }}>Track:</span> {track.track_number}{track.total_tracks && track.total_tracks > 0 ? `/${track.total_tracks}` : ''}
+              </div>
+            )}
 
             {/* Keyword tags */}
             {keywords.length > 0 && (

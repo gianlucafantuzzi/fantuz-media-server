@@ -220,7 +220,7 @@ export const AlbumView: React.FC<AlbumViewProps> = ({
                       style={{ padding: '8px 12px', cursor: 'pointer' }}
                     >
                       <div style={{ width: '28px', color: 'var(--text-muted)', fontSize: '13px', textAlign: 'center', flexShrink: 0 }}>
-                        {track.track_number}
+                        {track.track_number > 0 ? track.track_number : ''}
                       </div>
                       <div className="track-details">
                         <div className="track-title" style={{ fontWeight: 500 }}>{track.title}</div>
