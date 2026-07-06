@@ -57,7 +57,7 @@ func (TagParser) Parse(path string) (TrackMetadata, error) {
 	}
 	file.Seek(0, io.SeekStart)
 
-	isMP3 := isID3 || strings.ToLower(filepath.Ext(path)) == ".mp3"
+	isMP3 := strings.ToLower(filepath.Ext(path)) == ".mp3"
 
 	var title, artist, album, albumArtist, composer, genre string
 	var date, discNumber, totalDiscs, trackNumber, totalTracks int

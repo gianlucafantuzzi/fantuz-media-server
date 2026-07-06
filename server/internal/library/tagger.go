@@ -2,6 +2,8 @@ package library
 
 import (
 	"errors"
+	"io"
+	"os"
 	"strings"
 
 	"github.com/bogem/id3v2/v2"
@@ -41,7 +43,24 @@ func writeMP3Keywords(filePath string, keywords []string) error {
 }
 
 func writeFLACKeywords(filePath string, keywords []string) error {
-	f, err := flac.ParseFile(filePath)
+	file, err := os.Open(filePath)
+	if err != nil {
+		return err
+	}
+
+	header := make([]byte, 10)
+	offset := 0
+	if _, err := io.ReadFull(file, header); err == nil && string(header[:3]) == "ID3" {
+		offset = 10 + (int(header[6]&0x7f)<<21 | int(header[7]&0x7f)<<14 | int(header[8]&0x7f)<<7 | int(header[9]&0x7f))
+	}
+
+	if _, err := file.Seek(int64(offset), io.SeekStart); err != nil {
+		file.Close()
+		return err
+	}
+
+	f, err := flac.ParseBytes(file)
+	file.Close()
 	if err != nil {
 		return err
 	}
