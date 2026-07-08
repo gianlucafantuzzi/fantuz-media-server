@@ -22,5 +22,8 @@ fantuz.db
 player_state.json
 config.json
 
+# Experimental files
+scratch/
+
 # Temporarily removing the deployment folder
 deploy/

@@ -57,6 +57,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("/api/library/albums", s.handleAlbums)
 	mux.HandleFunc("/api/library/albums/", s.handleAlbum)
 	mux.HandleFunc("/api/library/albums/keywords", s.handleAlbumKeywords)
+	mux.HandleFunc("/api/library/albums/metadata", s.handleAlbumMetadataUpdate)
 	mux.HandleFunc("/api/library/keywords", s.handleKeywords)
 	mux.HandleFunc("/api/library/tracks", s.handleTracks)
 	mux.HandleFunc("/api/playlists", s.handlePlaylists)
@@ -527,3 +528,59 @@ func (s *Server) handleAlbumKeywords(w http.ResponseWriter, r *http.Request) {
 
 	writeJSON(w, http.StatusOK, map[string]string{"status": "success"})
 }
+
+type albumMetadataUpdateReq struct {
+	AlbumID     int64  `json:"album_id"`
+	Album       string `json:"album"`
+	AlbumArtist string `json:"album_artist"`
+	Artist      string `json:"artist"`
+	Composer    string `json:"composer"`
+	Date        string `json:"date"`
+}
+
+func (s *Server) handleAlbumMetadataUpdate(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		methodNotAllowed(w)
+		return
+	}
+
+	var req albumMetadataUpdateReq
+	if !decodeJSON(w, r, &req) {
+		return
+	}
+
+	tracks, err := s.db.AlbumTracks(req.AlbumID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+
+	fields := make(map[string]string)
+	if req.Album != "Varies across tracks" {
+		fields["album"] = req.Album
+	}
+	if req.AlbumArtist != "Varies across tracks" {
+		fields["album_artist"] = req.AlbumArtist
+	}
+	if req.Artist != "Varies across tracks" {
+		fields["artist"] = req.Artist
+	}
+	if req.Composer != "Varies across tracks" {
+		fields["composer"] = req.Composer
+	}
+	if req.Date != "Varies across tracks" {
+		fields["date"] = req.Date
+	}
+
+	if len(fields) > 0 {
+		for _, track := range tracks {
+			if err := library.WriteMetadataFields(track.FilePath, fields); err != nil {
+				writeError(w, http.StatusInternalServerError, err)
+				return
+			}
+		}
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"status": "success"})
+}
+

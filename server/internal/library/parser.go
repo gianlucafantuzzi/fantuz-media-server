@@ -199,6 +199,15 @@ func (TagParser) Parse(path string) (TrackMetadata, error) {
 				album = metadata.Album()
 				albumArtist = metadata.AlbumArtist()
 				composer = metadata.Composer()
+				if metadata.Format() == tag.VORBIS {
+					if rawVal, ok := raw["composer"]; ok {
+						if strVal, ok := rawVal.(string); ok {
+							composer = strVal
+						}
+					} else {
+						composer = ""
+					}
+				}
 				genre = metadata.Genre()
 				date = metadata.Year()
 				trackNumber, totalTracks = metadata.Track()

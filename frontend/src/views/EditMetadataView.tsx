@@ -16,21 +16,94 @@ export const EditMetadataView: React.FC<EditMetadataViewProps> = ({ serverUrl })
 	const [loading, setLoading] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 
-	// Tab: Add/Remove tags state
+	// Tab: Add/remove tags state
 	const [searchQuery, setSearchQuery] = useState('');
 	const [filterKeywords, setFilterKeywords] = useState<string[]>([]);
 	const [excludedKeywords, setExcludedKeywords] = useState<string[]>([]);
 	const [selectedAlbumIds, setSelectedAlbumIds] = useState<number[]>([]);
 	const [albumLimit, setAlbumLimit] = useState(20);
 
+	// Tab: Edit album metadata state
+	const [editingAlbum, setEditingAlbum] = useState<Album | null>(null);
+	const [editAlbumTitle, setEditAlbumTitle] = useState('');
+	const [editAlbumArtist, setEditAlbumArtist] = useState('');
+	const [editArtist, setEditArtist] = useState('');
+	const [editComposer, setEditComposer] = useState('');
+	const [editYear, setEditYear] = useState('');
+	const [editingTrack, setEditingTrack] = useState<Track | null>(null);
+
 	// Keyword Selection for Removal
 	const [selectedKeywordsForRemoval, setSelectedKeywordsForRemoval] = useState<string[]>([]);
+	const [modalKeywordsForRemoval, setModalKeywordsForRemoval] = useState<string[]>([]);
 
 	// Modals/Dialogs state
 	const [showAddModal, setShowAddModal] = useState(false);
 	const [newKeywordInput, setNewKeywordInput] = useState('');
 	const [showRemoveModal, setShowRemoveModal] = useState(false);
 	const [submitting, setSubmitting] = useState(false);
+
+	const handleTabChange = (tab: 'add-remove' | 'edit-track' | 'edit-album') => {
+		setActiveTab(tab);
+		setEditingAlbum(null);
+		setEditingTrack(null);
+		setSelectedAlbumIds([]);
+		setSelectedKeywordsForRemoval([]);
+		setModalKeywordsForRemoval([]);
+		setSearchQuery('');
+		setFilterKeywords([]);
+		setExcludedKeywords([]);
+		setAlbumLimit(20);
+	};
+
+	useEffect(() => {
+		if (editingAlbum) {
+			const albumTracks = tracks.filter(t => t.album_id === editingAlbum.id);
+
+			if (albumTracks.length > 0) {
+				// Album title
+				setEditAlbumTitle(editingAlbum.title || '');
+
+				// Album artist
+				setEditAlbumArtist(editingAlbum.album_artist || '');
+
+				// Artist consistency check
+				const firstArtist = albumTracks[0].artist || '';
+				const consistentArtist = albumTracks.every(t => (t.artist || '') === firstArtist) ? firstArtist : 'Varies across tracks';
+				setEditArtist(consistentArtist);
+
+				// Composer consistency check
+				const firstComposer = albumTracks[0].composer || '';
+				const consistentComposer = albumTracks.every(t => (t.composer || '') === firstComposer) ? firstComposer : 'Varies across tracks';
+				setEditComposer(consistentComposer);
+
+				// Year consistency check
+				const firstYear = albumTracks[0].date || 0;
+				const consistentYear = albumTracks.every(t => (t.date || 0) === firstYear)
+					? (firstYear > 0 ? String(firstYear) : '')
+					: 'Varies across tracks';
+				setEditYear(consistentYear);
+			} else {
+				setEditAlbumTitle('');
+				setEditAlbumArtist('');
+				setEditArtist('');
+				setEditComposer('');
+				setEditYear('');
+			}
+		} else {
+			setEditAlbumTitle('');
+			setEditAlbumArtist('');
+			setEditArtist('');
+			setEditComposer('');
+			setEditYear('');
+		}
+	}, [editingAlbum, tracks]);
+
+	useEffect(() => {
+		const mainContent = document.querySelector('.main-content');
+		if (mainContent) {
+			mainContent.scrollTop = 0;
+		}
+	}, [activeTab, editingAlbum, editingTrack]);
 
 	const fetchData = async () => {
 		setLoading(true);
@@ -145,6 +218,18 @@ export const EditMetadataView: React.FC<EditMetadataViewProps> = ({ serverUrl })
 
 	const commonKeywords = getCommonKeywords();
 
+	const getAlbumCommonKeywords = () => {
+		if (!editingAlbum) return [];
+		const albumTracks = tracks.filter(t => t.album_id === editingAlbum.id);
+		if (albumTracks.length === 0) return [];
+		const firstTrackKws = albumTracks[0].keywords || [];
+		return firstTrackKws.filter(kw =>
+			albumTracks.every(t => t.keywords && t.keywords.includes(kw))
+		);
+	};
+
+	const albumCommonKeywords = getAlbumCommonKeywords();
+
 	const handleToggleFilterKeyword = (kw: string) => {
 		if (filterKeywords.includes(kw)) {
 			setFilterKeywords(filterKeywords.filter(k => k !== kw));
@@ -177,6 +262,63 @@ export const EditMetadataView: React.FC<EditMetadataViewProps> = ({ serverUrl })
 		}
 	};
 
+	const handleResetFields = () => {
+		if (!editingAlbum) return;
+		const albumTracks = tracks.filter(t => t.album_id === editingAlbum.id);
+		setEditAlbumTitle(editingAlbum.title || '');
+		setEditAlbumArtist(editingAlbum.album_artist || '');
+		if (albumTracks.length > 0) {
+			const firstArtist = albumTracks[0].artist || '';
+			const consistentArtist = albumTracks.every(t => (t.artist || '') === firstArtist) ? firstArtist : 'Varies across tracks';
+			setEditArtist(consistentArtist);
+
+			const firstComposer = albumTracks[0].composer || '';
+			const consistentComposer = albumTracks.every(t => (t.composer || '') === firstComposer) ? firstComposer : 'Varies across tracks';
+			setEditComposer(consistentComposer);
+
+			const firstYear = albumTracks[0].date || 0;
+			const consistentYear = albumTracks.every(t => (t.date || 0) === firstYear)
+				? (firstYear > 0 ? String(firstYear) : '')
+				: 'Varies across tracks';
+			setEditYear(consistentYear);
+		}
+	};
+
+	const handleSaveFields = async () => {
+		if (!editingAlbum) return;
+		setSubmitting(true);
+		try {
+			const res = await fetch(`${serverUrl}/api/library/albums/metadata`, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					album_id: editingAlbum.id,
+					album: editAlbumTitle,
+					album_artist: editAlbumArtist,
+					artist: editArtist,
+					composer: editComposer,
+					date: editYear,
+				}),
+			});
+			if (!res.ok) {
+				const data = await res.json();
+				throw new Error(data.error || 'Failed to save metadata');
+			}
+
+			await triggerScan();
+			await fetchData();
+		} catch (err: any) {
+			alert(err.message);
+		} finally {
+			setSubmitting(false);
+		}
+	};
+
+	const handleBackFromEditTrack = async () => {
+		setEditingTrack(null);
+		await fetchData();
+	};
+
 	// Save tag edits and trigger scan
 	const triggerScan = async () => {
 		try {
@@ -203,7 +345,7 @@ export const EditMetadataView: React.FC<EditMetadataViewProps> = ({ serverUrl })
 			});
 			if (!res.ok) {
 				const data = await res.json();
-				throw new Error(data.error || 'Failed to add keyword');
+				throw new Error(data.error || 'Failed to add tag');
 			}
 
 			// Trigger DB scan and refetch data
@@ -222,7 +364,7 @@ export const EditMetadataView: React.FC<EditMetadataViewProps> = ({ serverUrl })
 	};
 
 	const handleRemoveKeywordsConfirm = async () => {
-		if (selectedKeywordsForRemoval.length === 0 || selectedAlbumIds.length === 0) return;
+		if (modalKeywordsForRemoval.length === 0 || selectedAlbumIds.length === 0) return;
 
 		setSubmitting(true);
 		try {
@@ -231,12 +373,12 @@ export const EditMetadataView: React.FC<EditMetadataViewProps> = ({ serverUrl })
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({
 					album_ids: selectedAlbumIds,
-					keywords: selectedKeywordsForRemoval,
+					keywords: modalKeywordsForRemoval,
 				}),
 			});
 			if (!res.ok) {
 				const data = await res.json();
-				throw new Error(data.error || 'Failed to remove keywords');
+				throw new Error(data.error || 'Failed to remove tags');
 			}
 
 			// Trigger DB scan and refetch data
@@ -245,6 +387,7 @@ export const EditMetadataView: React.FC<EditMetadataViewProps> = ({ serverUrl })
 			setSelectedAlbumIds([]);
 
 			setSelectedKeywordsForRemoval([]);
+			setModalKeywordsForRemoval([]);
 			setShowRemoveModal(false);
 		} catch (err: any) {
 			alert(err.message);
@@ -266,7 +409,7 @@ export const EditMetadataView: React.FC<EditMetadataViewProps> = ({ serverUrl })
 				}}
 			>
 				<button
-					onClick={() => setActiveTab('add-remove')}
+					onClick={() => handleTabChange('add-remove')}
 					style={{
 						background: 'none',
 						border: 'none',
@@ -278,31 +421,13 @@ export const EditMetadataView: React.FC<EditMetadataViewProps> = ({ serverUrl })
 						padding: '4px 8px'
 					}}
 				>
-					Add/Remove tags
+					Add/remove tags
 					{activeTab === 'add-remove' && (
 						<div style={{ position: 'absolute', bottom: '-9px', left: 0, right: 0, height: '2px', backgroundColor: 'var(--accent)' }} />
 					)}
 				</button>
 				<button
-					onClick={() => setActiveTab('edit-track')}
-					style={{
-						background: 'none',
-						border: 'none',
-						color: activeTab === 'edit-track' ? 'var(--accent)' : 'var(--text-secondary)',
-						fontSize: '16px',
-						fontWeight: 600,
-						cursor: 'pointer',
-						position: 'relative',
-						padding: '4px 8px'
-					}}
-				>
-					Edit track metadata
-					{activeTab === 'edit-track' && (
-						<div style={{ position: 'absolute', bottom: '-9px', left: 0, right: 0, height: '2px', backgroundColor: 'var(--accent)' }} />
-					)}
-				</button>
-				<button
-					onClick={() => setActiveTab('edit-album')}
+					onClick={() => handleTabChange('edit-album')}
 					style={{
 						background: 'none',
 						border: 'none',
@@ -316,6 +441,24 @@ export const EditMetadataView: React.FC<EditMetadataViewProps> = ({ serverUrl })
 				>
 					Edit album metadata
 					{activeTab === 'edit-album' && (
+						<div style={{ position: 'absolute', bottom: '-9px', left: 0, right: 0, height: '2px', backgroundColor: 'var(--accent)' }} />
+					)}
+				</button>
+				<button
+					onClick={() => handleTabChange('edit-track')}
+					style={{
+						background: 'none',
+						border: 'none',
+						color: activeTab === 'edit-track' ? 'var(--accent)' : 'var(--text-secondary)',
+						fontSize: '16px',
+						fontWeight: 600,
+						cursor: 'pointer',
+						position: 'relative',
+						padding: '4px 8px'
+					}}
+				>
+					Edit track metadata
+					{activeTab === 'edit-track' && (
 						<div style={{ position: 'absolute', bottom: '-9px', left: 0, right: 0, height: '2px', backgroundColor: 'var(--accent)' }} />
 					)}
 				</button>
@@ -591,7 +734,10 @@ export const EditMetadataView: React.FC<EditMetadataViewProps> = ({ serverUrl })
 									opacity: selectedKeywordsForRemoval.length === 0 ? 0.5 : 1
 								}}
 								disabled={selectedKeywordsForRemoval.length === 0}
-								onClick={() => setShowRemoveModal(true)}
+								onClick={() => {
+									setModalKeywordsForRemoval(selectedKeywordsForRemoval);
+									setShowRemoveModal(true);
+								}}
 							>
 								Remove tag(s)
 							</button>
@@ -600,7 +746,509 @@ export const EditMetadataView: React.FC<EditMetadataViewProps> = ({ serverUrl })
 				</div>
 			)}
 
-			{activeTab !== 'add-remove' && (
+			{activeTab === 'edit-album' && (
+				editingTrack ? (
+					<div style={{ position: 'relative', minHeight: '300px' }}>
+						<div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
+							<h2 style={{ fontSize: '20px', fontWeight: 600, color: 'var(--text-primary)' }}>Edit Track: {editingTrack.title}</h2>
+							<button
+								onClick={handleBackFromEditTrack}
+								style={{
+									background: 'none',
+									border: 'none',
+									color: 'var(--text-secondary)',
+									cursor: 'pointer',
+									padding: '8px',
+									display: 'flex',
+									alignItems: 'center',
+									justifyContent: 'center',
+									transition: 'color 150ms ease-out',
+									flexShrink: 0,
+								}}
+								aria-label="Back"
+							>
+								<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+									<line x1="19" y1="12" x2="5" y2="12" />
+									<polyline points="12 19 5 12 12 5" />
+								</svg>
+							</button>
+						</div>
+						{/* Blank for now */}
+						<div style={{ padding: '40px 0', textAlign: 'center', color: 'var(--text-muted)' }}>
+							<p>Edit track details will go here.</p>
+						</div>
+					</div>
+				) : editingAlbum ? (
+					<div style={{ position: 'relative', minHeight: '300px' }}>
+						<div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
+							<h2 style={{ fontSize: '20px', fontWeight: 600, color: 'var(--text-primary)' }}>Edit Album: {editingAlbum.title}</h2>
+							<button
+								onClick={() => setEditingAlbum(null)}
+								style={{
+									background: 'none',
+									border: 'none',
+									color: 'var(--text-secondary)',
+									cursor: 'pointer',
+									padding: '8px',
+									display: 'flex',
+									alignItems: 'center',
+									justifyContent: 'center',
+									transition: 'color 150ms ease-out',
+									flexShrink: 0,
+								}}
+								aria-label="Back"
+							>
+								<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+									<line x1="19" y1="12" x2="5" y2="12" />
+									<polyline points="12 19 5 12 12 5" />
+								</svg>
+							</button>
+						</div>
+
+						{/* Edit Album Details Layout */}
+						<div style={{ display: 'flex', gap: '32px', flexWrap: 'wrap', marginTop: '24px' }}>
+							{/* Left Column: Album Artwork & Keywords */}
+							<div style={{ width: '220px', display: 'flex', flexDirection: 'column', flexShrink: 0 }}>
+								<div
+									className="album-artwork-wrapper"
+									style={{ width: '220px', height: '220px', borderRadius: '8px', overflow: 'hidden' }}
+								>
+									{editingAlbum.artwork_path ? (
+										<>
+											<img
+												src={`${serverUrl}/artwork/${editingAlbum.id}`}
+												alt={editingAlbum.title}
+												className="album-artwork"
+												style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+												onError={(e) => {
+													(e.target as HTMLElement).style.display = 'none';
+													const parent = (e.target as HTMLElement).parentElement;
+													if (parent) {
+														const placeholder = parent.querySelector('.album-artwork-placeholder');
+														if (placeholder) {
+															(placeholder as HTMLElement).style.display = 'flex';
+														}
+													}
+												}}
+											/>
+											<div className="album-artwork-placeholder" style={{ display: 'none', width: '100%', height: '100%', justifyContent: 'center', alignItems: 'center' }}>
+												<svg width="60" height="60" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+													<circle cx="12" cy="12" r="10" />
+													<circle cx="12" cy="12" r="3" />
+												</svg>
+											</div>
+										</>
+									) : (
+										<div className="album-artwork-placeholder" style={{ width: '100%', height: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+											<svg width="60" height="60" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+												<circle cx="12" cy="12" r="10" />
+												<circle cx="12" cy="12" r="3" />
+											</svg>
+										</div>
+									)}
+								</div>
+
+								{/* Keywords Present in all tracks of the album */}
+								<div style={{ width: '220px', marginTop: '24px' }}>
+									{albumCommonKeywords.length === 0 ? (
+										<p className="metadata-text" style={{ fontSize: '12px', color: 'var(--text-muted)' }}>No common tags.</p>
+									) : (
+										<div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '12px' }}>
+											{albumCommonKeywords.map(kw => {
+												const isSelected = selectedKeywordsForRemoval.includes(kw);
+												return (
+													<button
+														key={kw}
+														onClick={() => handleToggleKeywordForRemoval(kw)}
+														style={{
+															padding: '4px 8px',
+															borderRadius: '10px',
+															border: '1px solid',
+															borderColor: isSelected ? 'var(--accent)' : 'var(--border-color)',
+															backgroundColor: isSelected ? 'rgba(47, 200, 201, 0.1)' : 'var(--bg-panel)',
+															color: isSelected ? 'var(--accent)' : 'var(--text-secondary)',
+															fontSize: '11px',
+															cursor: 'pointer',
+															display: 'flex',
+															alignItems: 'center',
+															gap: '4px'
+														}}
+													>
+														<span>{kw}</span>
+														{isSelected && (
+															<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+																<polyline points="20 6 9 17 4 12" />
+															</svg>
+														)}
+													</button>
+												);
+											})}
+										</div>
+									)}
+
+									<div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
+										<button
+											className="btn-primary"
+											style={{ padding: '6px 12px', fontSize: '12px', flex: 1 }}
+											onClick={() => {
+												setSelectedAlbumIds([editingAlbum.id]);
+												setShowAddModal(true);
+											}}
+										>
+											Add tag(s)
+										</button>
+										<button
+											className="btn-primary"
+											style={{ padding: '6px 12px', fontSize: '12px', flex: 1, opacity: albumCommonKeywords.length === 0 ? 0.5 : 1 }}
+											disabled={albumCommonKeywords.length === 0}
+											onClick={() => {
+												setSelectedAlbumIds([editingAlbum.id]);
+												setModalKeywordsForRemoval(selectedKeywordsForRemoval);
+												setShowRemoveModal(true);
+											}}
+										>
+											Remove tag(s)
+										</button>
+									</div>
+								</div>
+							</div>
+
+							{/* Right Column: Edit Fields */}
+							<div style={{ flex: 1, minWidth: '300px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+								<div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+									<label style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-muted)' }}>Album title</label>
+									<input
+										type="text"
+										className="search-input"
+										value={editAlbumTitle}
+										onChange={(e) => setEditAlbumTitle(e.target.value)}
+										onFocus={(e) => {
+											if (e.target.value === 'Varies across tracks') {
+												setEditAlbumTitle('');
+											}
+										}}
+										style={{
+											width: '100%',
+											boxSizing: 'border-box',
+											fontStyle: editAlbumTitle === 'Varies across tracks' ? 'italic' : 'normal'
+										}}
+									/>
+								</div>
+								<div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+									<label style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-muted)' }}>Album artist</label>
+									<input
+										type="text"
+										className="search-input"
+										value={editAlbumArtist}
+										onChange={(e) => setEditAlbumArtist(e.target.value)}
+										onFocus={(e) => {
+											if (e.target.value === 'Varies across tracks') {
+												setEditAlbumArtist('');
+											}
+										}}
+										style={{
+											width: '100%',
+											boxSizing: 'border-box',
+											fontStyle: editAlbumArtist === 'Varies across tracks' ? 'italic' : 'normal'
+										}}
+									/>
+								</div>
+								<div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+									<label style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-muted)' }}>Artist</label>
+									<input
+										type="text"
+										className="search-input"
+										value={editArtist}
+										onChange={(e) => setEditArtist(e.target.value)}
+										onFocus={(e) => {
+											if (e.target.value === 'Varies across tracks') {
+												setEditArtist('');
+											}
+										}}
+										style={{
+											width: '100%',
+											boxSizing: 'border-box',
+											fontStyle: editArtist === 'Varies across tracks' ? 'italic' : 'normal'
+										}}
+									/>
+								</div>
+								<div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+									<label style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-muted)' }}>Composer</label>
+									<input
+										type="text"
+										className="search-input"
+										value={editComposer}
+										onChange={(e) => setEditComposer(e.target.value)}
+										onFocus={(e) => {
+											if (e.target.value === 'Varies across tracks') {
+												setEditComposer('');
+											}
+										}}
+										style={{
+											width: '100%',
+											boxSizing: 'border-box',
+											fontStyle: editComposer === 'Varies across tracks' ? 'italic' : 'normal'
+										}}
+									/>
+								</div>
+								<div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+									<label style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-muted)' }}>Year</label>
+									<input
+										type="text"
+										className="search-input"
+										value={editYear}
+										onChange={(e) => setEditYear(e.target.value)}
+										onFocus={(e) => {
+											if (e.target.value === 'Varies across tracks') {
+												setEditYear('');
+											}
+										}}
+										style={{
+											width: '100%',
+											boxSizing: 'border-box',
+											fontStyle: editYear === 'Varies across tracks' ? 'italic' : 'normal'
+										}}
+									/>
+								</div>
+
+								{/* Action Buttons for Album Metadata */}
+								<div style={{ display: 'flex', gap: '12px', marginTop: '16px' }}>
+									<button
+										className="btn-primary"
+										onClick={handleResetFields}
+									>
+										Reset
+									</button>
+									<button
+										className="btn-primary"
+										onClick={handleSaveFields}
+										disabled={submitting}
+									>
+										{submitting ? 'Saving...' : 'Save'}
+									</button>
+								</div>
+							</div>
+						</div>
+
+						{/* Divider */}
+						<div style={{ height: '1px', backgroundColor: 'var(--border-color)', margin: '40px 0 24px' }} />
+
+						{/* Tracks List */}
+						<div>
+							<h3 style={{ fontSize: '16px', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '16px' }}>
+								Tracks
+							</h3>
+							<div className="tracks-list" style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+								{[...tracks.filter(t => t.album_id === editingAlbum.id)]
+									.sort((a, b) => {
+										if (a.disc_number !== b.disc_number) {
+											return (a.disc_number || 0) - (b.disc_number || 0);
+										}
+										return (a.track_number || 0) - (b.track_number || 0);
+									})
+									.map((track) => (
+										<div
+											key={track.id}
+											className="track-row"
+											style={{
+												display: 'flex',
+												justifyContent: 'space-between',
+												alignItems: 'center',
+												padding: '8px 12px',
+												borderBottom: '1px solid var(--border-color)',
+												borderRadius: '4px'
+											}}
+										>
+											<div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+												<span style={{ color: 'var(--text-muted)', fontSize: '14px', width: '24px', textAlign: 'right' }}>
+													{track.track_number || ''}
+												</span>
+												<span style={{ fontWeight: 500, color: 'var(--text-primary)' }}>
+													{track.title}
+												</span>
+											</div>
+											<div style={{ display: 'flex', alignItems: 'center', gap: '24px' }}>
+												<button
+													className="btn-primary"
+													style={{ height: '32px', borderRadius: '16px', padding: '0 20px', fontSize: '12px' }}
+													onClick={() => setEditingTrack(track)}
+												>
+													Edit
+												</button>
+											</div>
+										</div>
+									))}
+							</div>
+						</div>
+					</div>
+				) : (
+					<div>
+						{/* Search input */}
+						<div className="search-container" style={{ maxWidth: '600px', margin: '0 auto 32px' }}>
+							<div className="search-input-wrapper">
+								<svg
+									className="search-icon-inside"
+									width="20"
+									height="20"
+									viewBox="0 0 24 24"
+									fill="none"
+									stroke="currentColor"
+									strokeWidth="2"
+									strokeLinecap="round"
+									strokeLinejoin="round"
+								>
+									<circle cx="11" cy="11" r="8" />
+									<line x1="21" y1="21" x2="16.65" y2="16.65" />
+								</svg>
+								<input
+									type="text"
+									className="search-input"
+									placeholder="Search for tracks, albums, artists, tags..."
+									value={searchQuery}
+									onChange={(e) => setSearchQuery(e.target.value)}
+								/>
+							</div>
+						</div>
+
+						{/* Filter by tags Section */}
+						<div style={{ marginBottom: '24px' }}>
+							<h3 style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '12px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+								Filter by tags
+							</h3>
+							{allKeywords.length === 0 ? (
+								<p className="metadata-text" style={{ fontSize: '14px' }}>No keywords exist in the library yet.</p>
+							) : (
+								<div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+									{allKeywords.map(kw => {
+										const isSelected = filterKeywords.includes(kw);
+										return (
+											<button
+												key={kw}
+												type="button"
+												onClick={() => handleToggleFilterKeyword(kw)}
+												style={{
+													padding: '6px 12px',
+													borderRadius: '16px',
+													border: '1px solid',
+													borderColor: isSelected ? 'var(--accent)' : 'var(--border-color)',
+													backgroundColor: isSelected ? 'rgba(47, 200, 201, 0.1)' : 'var(--bg-panel)',
+													color: isSelected ? 'var(--accent)' : 'var(--text-secondary)',
+													fontSize: '12px',
+													cursor: 'pointer',
+													transition: 'all 150ms ease'
+												}}
+											>
+												{kw}
+											</button>
+										);
+									})}
+								</div>
+							)}
+						</div>
+
+						{/* Exclude tags Section */}
+						<div style={{ marginBottom: '32px' }}>
+							<h3 style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '12px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+								Exclude tags
+							</h3>
+							{allKeywords.length === 0 ? (
+								<p className="metadata-text" style={{ fontSize: '14px' }}>No keywords exist in the library yet.</p>
+							) : (
+								<div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+									{allKeywords.map(kw => {
+										const isSelected = excludedKeywords.includes(kw);
+										return (
+											<button
+												key={kw}
+												type="button"
+												onClick={() => handleToggleExcludeKeyword(kw)}
+												style={{
+													padding: '6px 12px',
+													borderRadius: '16px',
+													border: '1px solid',
+													borderColor: isSelected ? '#ef4444' : 'var(--border-color)',
+													backgroundColor: isSelected ? 'rgba(239, 68, 68, 0.1)' : 'var(--bg-panel)',
+													color: isSelected ? '#ef4444' : 'var(--text-secondary)',
+													fontSize: '12px',
+													cursor: 'pointer',
+													transition: 'all 150ms ease'
+												}}
+											>
+												{kw}
+											</button>
+										);
+									})}
+								</div>
+							)}
+						</div>
+
+						{/* Album Cards Grid */}
+						<div style={{ marginBottom: '40px' }}>
+							<h3 style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '16px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+								Albums ({filteredAlbums.length} matching)
+							</h3>
+							{loading ? (
+								<div className="loading-container">Loading albums...</div>
+							) : displayedAlbums.length === 0 ? (
+								<p className="metadata-text">No albums match the search criteria.</p>
+							) : (
+								<div className="albums-grid">
+									{displayedAlbums.map((album) => {
+										const artworkUrl = album.artwork_path
+											? `${serverUrl}/artwork/${album.id}`
+											: '';
+
+										return (
+											<div
+												key={album.id}
+												className="album-card"
+												onClick={() => setEditingAlbum(album)}
+												style={{
+													borderRadius: '8px',
+													cursor: 'pointer',
+													transition: 'transform 150ms ease, box-shadow 150ms ease',
+													position: 'relative'
+												}}
+											>
+												<div className="album-artwork-wrapper">
+													{artworkUrl ? (
+														<img src={artworkUrl} alt={album.title} className="album-artwork" />
+													) : (
+														<div className="album-artwork-placeholder">
+															<svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+																<circle cx="12" cy="12" r="10" />
+																<circle cx="12" cy="12" r="3" />
+															</svg>
+														</div>
+													)}
+												</div>
+												<div className="album-card-details">
+													<div className="album-card-title" title={album.title}>{album.title}</div>
+													<div className="album-card-artist" title={album.album_artist}>{album.album_artist}</div>
+													<div className="album-card-duration">{formatDuration(album.duration_seconds)}</div>
+												</div>
+											</div>
+										);
+									})}
+								</div>
+							)}
+
+							{filteredAlbums.length > albumLimit && (
+								<div style={{ display: 'flex', justifyContent: 'center', marginTop: '32px' }}>
+									<button
+										className="btn-primary"
+										onClick={() => setAlbumLimit(prev => prev + 20)}
+									>
+										View more
+									</button>
+								</div>
+							)}
+						</div>
+					</div>
+				)
+			)}
+
+			{activeTab === 'edit-track' && (
 				<div style={{ padding: '40px 0', textAlign: 'center', color: 'var(--text-muted)' }}>
 					<p>This tab is a placeholder for future implementation.</p>
 				</div>
@@ -634,7 +1282,7 @@ export const EditMetadataView: React.FC<EditMetadataViewProps> = ({ serverUrl })
 						}}
 					>
 						<h3 style={{ fontSize: '20px', fontWeight: 600, marginBottom: '24px', color: 'var(--text-primary)' }}>
-							Add Keyword
+							Add tag
 						</h3>
 						<form onSubmit={handleAddKeywordSubmit}>
 							<div className="search-input-wrapper" style={{ marginBottom: '20px', border: '1px solid var(--border-color)', borderRadius: '8px' }}>
@@ -730,9 +1378,57 @@ export const EditMetadataView: React.FC<EditMetadataViewProps> = ({ serverUrl })
 						<h3 style={{ fontSize: '20px', fontWeight: 600, marginBottom: '16px', color: 'var(--text-primary)' }}>
 							Confirm Tag Removal
 						</h3>
-						<p style={{ color: 'var(--text-secondary)', fontSize: '14px', lineHeight: 1.5, marginBottom: '24px' }}>
-							Are you sure you want to remove the keyword(s) <strong>{selectedKeywordsForRemoval.join(', ')}</strong> from all tracks in the <strong>{selectedAlbumIds.length}</strong> selected album(s)? This will modify the files' metadata.
-						</p>
+						{activeTab === 'edit-album' ? (
+							<>
+								<p style={{ color: 'var(--text-secondary)', fontSize: '14px', lineHeight: 1.5, marginBottom: '12px' }}>
+									Select the keywords you wish to remove from all tracks in this album:
+								</p>
+								<div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '24px' }}>
+									{albumCommonKeywords.map(kw => {
+										const isSelected = modalKeywordsForRemoval.includes(kw);
+										return (
+											<button
+												key={kw}
+												type="button"
+												onClick={() => {
+													if (isSelected) {
+														setModalKeywordsForRemoval(modalKeywordsForRemoval.filter(k => k !== kw));
+													} else {
+														setModalKeywordsForRemoval([...modalKeywordsForRemoval, kw]);
+													}
+												}}
+												style={{
+													padding: '6px 12px',
+													borderRadius: '12px',
+													border: '1px solid',
+													borderColor: isSelected ? '#ef4444' : 'var(--border-color)',
+													backgroundColor: isSelected ? 'rgba(239, 68, 68, 0.1)' : 'var(--bg-panel)',
+													color: isSelected ? '#ef4444' : 'var(--text-secondary)',
+													fontSize: '12px',
+													cursor: 'pointer',
+													display: 'flex',
+													alignItems: 'center',
+													gap: '6px',
+													transition: 'all 150ms ease'
+												}}
+											>
+												<span>{kw}</span>
+												{isSelected && (
+													<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+														<line x1="18" y1="6" x2="6" y2="18" />
+														<line x1="6" y1="6" x2="18" y2="18" />
+													</svg>
+												)}
+											</button>
+										);
+									})}
+								</div>
+							</>
+						) : (
+							<p style={{ color: 'var(--text-secondary)', fontSize: '14px', lineHeight: 1.5, marginBottom: '24px' }}>
+								Are you sure you want to remove the keyword(s) <strong>{modalKeywordsForRemoval.join(', ')}</strong> from all tracks in the <strong>{selectedAlbumIds.length}</strong> selected album(s)? This will modify the files' metadata.
+							</p>
+						)}
 						<div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
 							<button
 								className="btn-primary"
@@ -744,9 +1440,9 @@ export const EditMetadataView: React.FC<EditMetadataViewProps> = ({ serverUrl })
 							</button>
 							<button
 								className="btn-primary"
-								style={{ backgroundColor: '#ef4444', borderColor: '#ef4444' }}
 								onClick={handleRemoveKeywordsConfirm}
-								disabled={submitting}
+								disabled={submitting || modalKeywordsForRemoval.length === 0}
+								style={{ backgroundColor: '#ef4444', borderColor: '#ef4444', opacity: modalKeywordsForRemoval.length === 0 ? 0.5 : 1 }}
 							>
 								{submitting ? 'Removing...' : 'Remove'}
 							</button>

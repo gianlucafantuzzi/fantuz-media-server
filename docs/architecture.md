@@ -251,9 +251,9 @@ The "Track" screen is used to provide all information about a track and play it 
 
 The "Edit metadata" screen has the purpose to browse the library on the server and change some of the ID3 tags. This causes changes to both the audio files and the DB. After changes have been made to the files, the library scan server API is invoked to update the DB.
 
-The screen is divided into three tabs: "Add/Remove tags", "Edit track metadata" and "Edit album metadata".
+The screen is divided into three tabs: "Add/remove tags", "Edit album metadata" and "Edit track metadata".
 
-* The "Add/Remove tags" tab consists of:
+* The "Add/remove tags" tab consists of:
 
     * At the top a search bar, identical to the one on the Home screen.
 
@@ -269,6 +269,30 @@ The screen is divided into three tabs: "Add/Remove tags", "Edit track metadata" 
         * on the right, two buttons:
             * "Add tag" - only active when at least one album card is selected. When pressed, a panel is opened containing a text box to input the desired keyword. The panel also displays a list of existing keywords (in their typical boxes)that can be used as a shortcut to populate the text box. On pressing OK, the keyword is added to all the tracks of all the selected albums. This is done by calling the server API.
             * "Remove tag(s)" - only active when at least one keyword is selected. When pressed it opens a message asking for confirmation and then proceeds to remove one by one the selected keywords from all the tracks of all the selected albums. This is done by calling the server API.
+
+* The "Edit album metadata" tab looks exactly the same as the "Add/remove tags" screen, but instead of selecting the albums, clicking on a card results in the contents of the tab switching to the "Edit album" screen.
+
+* The "Edit album" screen displays the following:
+    * On the top right of the screen, there is an arrow left button that sends you back to the previous screen.
+    * On the left, the album card of the selected album. The size is the same as in the "Album" screen.
+    * To the right of the card, edit boxes for the following fields:
+        * Album title
+        * Album artist
+        * Artist
+        * Composer
+        * Year
+    The fields are pre-populated with the current values of the metadata of all the tracks in the album. If the values for a field are not consistent across all tracks, the field will display in italic the string "Varies across tracks" (when edited, string is removed and the input text is not in italic anymore). After the fields, there are two buttons:
+        * "Reset" - restores the values of the fields from the metadata of the files
+        * "Save" - saves into the metadata of all tracks in the album the values of all fields that are not displaying "Varies across tracks". Text boxes left blank cause any data in those fields to be replaced by an empty string. The metadata is actually saved in the files in the server. Then the library scan is invoked to update the DB.
+    * Under the card, for a space just as long as the card, the keyword boxes are displayed for all the keywords that are present in all the tracks of the album.
+    * Under the keywords, there are two buttons: "Add tag(s)" and "Remove tag(s)". They behave exactly as the similar buttons in the "Add/remove tags" tab, but they only work on the current album instead of a collection of selected albums.
+    * Under all the aforementioned, all the tracks are listed, similarly to the "Album" screen, but without the duration. On the right side of each track is an "Edit" Button that results in the tab contents to switch to the "Edit track" screen.
+
+* The "Edit track" screen displays the following:
+    * On the top right of the screen, there is an arrow left button that sends you back to the previous screen. When the arrow is pressed to return to the "Edit album" screen, all fields (including the tags) are re-calculated, in case they have changed.
+
+#### Edit track metadata tab
+
 
 
 #### Playlists Screen
