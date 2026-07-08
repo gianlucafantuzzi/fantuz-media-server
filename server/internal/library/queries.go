@@ -56,6 +56,24 @@ func (db *DB) AlbumTracks(albumID int64) ([]Track, error) {
 	`, albumID)
 }
 
+func (db *DB) Track(id int64) (Track, error) {
+	row := db.sql.QueryRow(`
+		SELECT id, album_id, file_path, title, artist, duration_seconds, composer,
+			genre, date, disc_number, total_discs, track_number, total_tracks
+		FROM tracks
+		WHERE id = ?
+	`, id)
+	track, err := scanTrack(row)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return Track{}, ErrNotFound
+		}
+		return Track{}, err
+	}
+	track.Keywords, err = db.trackKeywords(track.ID)
+	return track, err
+}
+
 func (db *DB) TrackFilePath(id int64) (string, error) {
 	var path string
 	err := db.sql.QueryRow(`SELECT file_path FROM tracks WHERE id = ?`, id).Scan(&path)

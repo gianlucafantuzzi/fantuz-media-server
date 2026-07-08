@@ -133,6 +133,9 @@ func writeMP3MetadataFields(filePath string, fields map[string]string) error {
 	}
 	defer tag.Close()
 
+	if val, ok := fields["title"]; ok {
+		tag.AddTextFrame("TIT2", id3v2.EncodingUTF8, val)
+	}
 	if val, ok := fields["album"]; ok {
 		tag.AddTextFrame("TALB", id3v2.EncodingUTF8, val)
 	}
@@ -197,6 +200,7 @@ func writeFLACMetadataFields(filePath string, fields map[string]string) error {
 	}
 
 	fieldMap := map[string]string{
+		"title":        "TITLE",
 		"album":        "ALBUM",
 		"album_artist": "ALBUMARTIST",
 		"artist":       "ARTIST",

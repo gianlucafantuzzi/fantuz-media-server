@@ -74,9 +74,46 @@ GET /api/library/albums?keyword=Live
 
 Returns tracks for one album ordered by disc number, track number, and title.
 
+### `POST /api/library/albums/metadata`
+
+Updates the metadata (album title, album artist, artist, composer, and release date/year) for all tracks belonging to the specified album. Updates both physical audio file tags and the database.
+
+Request body:
+```json
+{
+  "album_id": 1,
+  "album": "The Spaghetti Incident?",
+  "album_artist": "Guns N' Roses",
+  "artist": "Guns N' Roses",
+  "composer": "Various Artists",
+  "date": "1993"
+}
+```
+
+Response: Status 200 OK.
+
 ### `GET /api/library/tracks`
 
 Returns tracks. Supports the same query parameters as `/api/library/albums`.
+
+### `POST /api/library/tracks/metadata`
+
+Updates the metadata (title, artist, album, album artist, composer, and release date/year) for the specified track. Updates both the physical audio file tags and the database.
+
+Request body:
+```json
+{
+  "track_id": 123,
+  "title": "Since I Don't Have You",
+  "artist": "Guns N' Roses",
+  "album": "The Spaghetti Incident?",
+  "album_artist": "Guns N' Roses",
+  "composer": "Joseph Rock",
+  "date": "1993"
+}
+```
+
+Response: Status 200 OK.
 
 ### `GET /api/library/search?q={term}`
 
@@ -169,6 +206,34 @@ Request body:
 {
   "album_ids": [1, 2],
   "keywords": ["Live"]
+}
+```
+
+Response: Status 200 OK.
+
+### `POST /api/library/tracks/keywords`
+
+Adds one or more keywords to a specific track. Updates both the physical audio file tags and the database.
+
+Request body:
+```json
+{
+  "track_id": 123,
+  "keywords": ["Favorite"]
+}
+```
+
+Response: Status 200 OK.
+
+### `DELETE /api/library/tracks/keywords`
+
+Removes one or more keywords from a specific track. Updates both the physical audio file tags and the database.
+
+Request body:
+```json
+{
+  "track_id": 123,
+  "keywords": ["Favorite"]
 }
 ```
 

@@ -32,6 +32,16 @@ export const EditMetadataView: React.FC<EditMetadataViewProps> = ({ serverUrl })
 	const [editYear, setEditYear] = useState('');
 	const [editingTrack, setEditingTrack] = useState<Track | null>(null);
 
+	// Tab: Edit track metadata state
+	const [editTrackTitle, setEditTrackTitle] = useState('');
+	const [editTrackArtist, setEditTrackArtist] = useState('');
+	const [editTrackAlbum, setEditTrackAlbum] = useState('');
+	const [editTrackAlbumArtist, setEditTrackAlbumArtist] = useState('');
+	const [editTrackComposer, setEditTrackComposer] = useState('');
+	const [editTrackYear, setEditTrackYear] = useState('');
+	const [trackSearchQuery, setTrackSearchQuery] = useState('');
+	const [trackLimit, setTrackLimit] = useState(20);
+
 	// Keyword Selection for Removal
 	const [selectedKeywordsForRemoval, setSelectedKeywordsForRemoval] = useState<string[]>([]);
 	const [modalKeywordsForRemoval, setModalKeywordsForRemoval] = useState<string[]>([]);
@@ -50,6 +60,8 @@ export const EditMetadataView: React.FC<EditMetadataViewProps> = ({ serverUrl })
 		setSelectedKeywordsForRemoval([]);
 		setModalKeywordsForRemoval([]);
 		setSearchQuery('');
+		setTrackSearchQuery('');
+		setTrackLimit(20);
 		setFilterKeywords([]);
 		setExcludedKeywords([]);
 		setAlbumLimit(20);
@@ -97,6 +109,25 @@ export const EditMetadataView: React.FC<EditMetadataViewProps> = ({ serverUrl })
 			setEditYear('');
 		}
 	}, [editingAlbum, tracks]);
+
+	useEffect(() => {
+		if (editingTrack) {
+			setEditTrackTitle(editingTrack.title || '');
+			setEditTrackArtist(editingTrack.artist || '');
+			const parentAlbum = albums.find(a => a.id === editingTrack.album_id);
+			setEditTrackAlbum(parentAlbum ? parentAlbum.title : '');
+			setEditTrackAlbumArtist(parentAlbum ? parentAlbum.album_artist : '');
+			setEditTrackComposer(editingTrack.composer || '');
+			setEditTrackYear(editingTrack.date ? String(editingTrack.date) : '');
+		} else {
+			setEditTrackTitle('');
+			setEditTrackArtist('');
+			setEditTrackAlbum('');
+			setEditTrackAlbumArtist('');
+			setEditTrackComposer('');
+			setEditTrackYear('');
+		}
+	}, [editingTrack, albums]);
 
 	useEffect(() => {
 		const mainContent = document.querySelector('.main-content');
@@ -314,6 +345,58 @@ export const EditMetadataView: React.FC<EditMetadataViewProps> = ({ serverUrl })
 		}
 	};
 
+	const handleResetTrackFields = () => {
+		if (editingTrack) {
+			setEditTrackTitle(editingTrack.title || '');
+			setEditTrackArtist(editingTrack.artist || '');
+			const parentAlbum = albums.find(a => a.id === editingTrack.album_id);
+			setEditTrackAlbum(parentAlbum ? parentAlbum.title : '');
+			setEditTrackAlbumArtist(parentAlbum ? parentAlbum.album_artist : '');
+			setEditTrackComposer(editingTrack.composer || '');
+			setEditTrackYear(editingTrack.date ? String(editingTrack.date) : '');
+		}
+	};
+
+	const handleSaveTrackFields = async () => {
+		if (!editingTrack) return;
+		setSubmitting(true);
+		try {
+			const res = await fetch(`${serverUrl}/api/library/tracks/metadata`, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					track_id: editingTrack.id,
+					title: editTrackTitle,
+					artist: editTrackArtist,
+					album: editTrackAlbum,
+					album_artist: editTrackAlbumArtist,
+					composer: editTrackComposer,
+					date: editTrackYear,
+				}),
+			});
+			if (!res.ok) {
+				const data = await res.json();
+				throw new Error(data.error || 'Failed to save track metadata');
+			}
+
+			await triggerScan();
+			await fetchData();
+
+			// Fetch updated track details
+			const updatedTrackRes = await fetch(`${serverUrl}/api/library/tracks`);
+			const tracksData = await updatedTrackRes.json();
+			setTracks(tracksData);
+			const updatedTrack = tracksData.find((t: any) => t.id === editingTrack.id);
+			if (updatedTrack) {
+				setEditingTrack(updatedTrack);
+			}
+		} catch (err: any) {
+			alert(err.message);
+		} finally {
+			setSubmitting(false);
+		}
+	};
+
 	const handleBackFromEditTrack = async () => {
 		setEditingTrack(null);
 		await fetchData();
@@ -331,27 +414,56 @@ export const EditMetadataView: React.FC<EditMetadataViewProps> = ({ serverUrl })
 	const handleAddKeywordSubmit = async (e: React.FormEvent) => {
 		e.preventDefault();
 		const kw = newKeywordInput.trim();
-		if (!kw || selectedAlbumIds.length === 0) return;
+		if (!kw) return;
 
 		setSubmitting(true);
 		try {
-			const res = await fetch(`${serverUrl}/api/library/albums/keywords`, {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({
-					album_ids: selectedAlbumIds,
-					keywords: [kw],
-				}),
-			});
-			if (!res.ok) {
-				const data = await res.json();
-				throw new Error(data.error || 'Failed to add tag');
-			}
+			if (editingTrack) {
+				const res = await fetch(`${serverUrl}/api/library/tracks/keywords`, {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({
+						track_id: editingTrack.id,
+						keywords: [kw],
+					}),
+				});
+				if (!res.ok) {
+					const data = await res.json();
+					throw new Error(data.error || 'Failed to add tag');
+				}
 
-			// Trigger DB scan and refetch data
-			triggerScan();
-			await fetchData();
-			setSelectedAlbumIds([]);
+				// Trigger DB scan and refetch data
+				triggerScan();
+				await fetchData();
+
+				// Fetch updated track details
+				const updatedTrackRes = await fetch(`${serverUrl}/api/library/tracks`);
+				const tracksData = await updatedTrackRes.json();
+				setTracks(tracksData);
+				const updatedTrack = tracksData.find((t: any) => t.id === editingTrack.id);
+				if (updatedTrack) {
+					setEditingTrack(updatedTrack);
+				}
+			} else {
+				if (selectedAlbumIds.length === 0) return;
+				const res = await fetch(`${serverUrl}/api/library/albums/keywords`, {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({
+						album_ids: selectedAlbumIds,
+						keywords: [kw],
+					}),
+				});
+				if (!res.ok) {
+					const data = await res.json();
+					throw new Error(data.error || 'Failed to add tag');
+				}
+
+				// Trigger DB scan and refetch data
+				triggerScan();
+				await fetchData();
+				setSelectedAlbumIds([]);
+			}
 
 			// Reset inputs
 			setNewKeywordInput('');
@@ -364,36 +476,234 @@ export const EditMetadataView: React.FC<EditMetadataViewProps> = ({ serverUrl })
 	};
 
 	const handleRemoveKeywordsConfirm = async () => {
-		if (modalKeywordsForRemoval.length === 0 || selectedAlbumIds.length === 0) return;
+		if (modalKeywordsForRemoval.length === 0) return;
 
 		setSubmitting(true);
 		try {
-			const res = await fetch(`${serverUrl}/api/library/albums/keywords`, {
-				method: 'DELETE',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({
-					album_ids: selectedAlbumIds,
-					keywords: modalKeywordsForRemoval,
-				}),
-			});
-			if (!res.ok) {
-				const data = await res.json();
-				throw new Error(data.error || 'Failed to remove tags');
+			if (editingTrack) {
+				const res = await fetch(`${serverUrl}/api/library/tracks/keywords`, {
+					method: 'DELETE',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({
+						track_id: editingTrack.id,
+						keywords: modalKeywordsForRemoval,
+					}),
+				});
+				if (!res.ok) {
+					const data = await res.json();
+					throw new Error(data.error || 'Failed to remove tags');
+				}
+
+				// Trigger DB scan and refetch data
+				triggerScan();
+				await fetchData();
+
+				// Fetch updated track details
+				const updatedTrackRes = await fetch(`${serverUrl}/api/library/tracks`);
+				const tracksData = await updatedTrackRes.json();
+				setTracks(tracksData);
+				const updatedTrack = tracksData.find((t: any) => t.id === editingTrack.id);
+				if (updatedTrack) {
+					setEditingTrack(updatedTrack);
+				}
+
+				setModalKeywordsForRemoval([]);
+				setShowRemoveModal(false);
+			} else {
+				if (selectedAlbumIds.length === 0) return;
+				const res = await fetch(`${serverUrl}/api/library/albums/keywords`, {
+					method: 'DELETE',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({
+						album_ids: selectedAlbumIds,
+						keywords: modalKeywordsForRemoval,
+					}),
+				});
+				if (!res.ok) {
+					const data = await res.json();
+					throw new Error(data.error || 'Failed to remove tags');
+				}
+
+				// Trigger DB scan and refetch data
+				triggerScan();
+				await fetchData();
+				setSelectedAlbumIds([]);
+
+				setSelectedKeywordsForRemoval([]);
+				setModalKeywordsForRemoval([]);
+				setShowRemoveModal(false);
 			}
-
-			// Trigger DB scan and refetch data
-			triggerScan();
-			await fetchData();
-			setSelectedAlbumIds([]);
-
-			setSelectedKeywordsForRemoval([]);
-			setModalKeywordsForRemoval([]);
-			setShowRemoveModal(false);
 		} catch (err: any) {
 			alert(err.message);
 		} finally {
 			setSubmitting(false);
 		}
+	};
+
+	const renderEditTrackScreen = () => {
+		if (!editingTrack) return null;
+
+		return (
+			<div style={{ position: 'relative', minHeight: '300px' }}>
+				<div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
+					<h2 style={{ fontSize: '20px', fontWeight: 600, color: 'var(--text-primary)' }}>Edit Track: {editingTrack.title}</h2>
+					<button
+						onClick={handleBackFromEditTrack}
+						style={{
+							background: 'none',
+							border: 'none',
+							color: 'var(--text-secondary)',
+							cursor: 'pointer',
+							padding: '8px',
+							display: 'flex',
+							alignItems: 'center',
+							justifyContent: 'center',
+							transition: 'color 150ms ease-out',
+							flexShrink: 0,
+						}}
+						aria-label="Back"
+					>
+						<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+							<line x1="19" y1="12" x2="5" y2="12" />
+							<polyline points="12 19 5 12 12 5" />
+						</svg>
+					</button>
+				</div>
+
+				<div className="metadata-grid" style={{
+					display: 'flex',
+					flexDirection: 'column',
+					gap: '16px',
+					marginBottom: '32px',
+					maxWidth: '600px'
+				}}>
+					<div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+						<label style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-muted)' }}>Track title</label>
+						<input
+							type="text"
+							className="search-input"
+							value={editTrackTitle}
+							onChange={(e) => setEditTrackTitle(e.target.value)}
+							style={{ width: '100%', boxSizing: 'border-box' }}
+						/>
+					</div>
+					<div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+						<label style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-muted)' }}>Artist</label>
+						<input
+							type="text"
+							className="search-input"
+							value={editTrackArtist}
+							onChange={(e) => setEditTrackArtist(e.target.value)}
+							style={{ width: '100%', boxSizing: 'border-box' }}
+						/>
+					</div>
+					<div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+						<label style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-muted)' }}>Album title</label>
+						<input
+							type="text"
+							className="search-input"
+							value={editTrackAlbum}
+							onChange={(e) => setEditTrackAlbum(e.target.value)}
+							style={{ width: '100%', boxSizing: 'border-box' }}
+						/>
+					</div>
+					<div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+						<label style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-muted)' }}>Album artist</label>
+						<input
+							type="text"
+							className="search-input"
+							value={editTrackAlbumArtist}
+							onChange={(e) => setEditTrackAlbumArtist(e.target.value)}
+							style={{ width: '100%', boxSizing: 'border-box' }}
+						/>
+					</div>
+					<div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+						<label style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-muted)' }}>Composer</label>
+						<input
+							type="text"
+							className="search-input"
+							value={editTrackComposer}
+							onChange={(e) => setEditTrackComposer(e.target.value)}
+							style={{ width: '100%', boxSizing: 'border-box' }}
+						/>
+					</div>
+					<div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+						<label style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-muted)' }}>Year</label>
+						<input
+							type="text"
+							className="search-input"
+							value={editTrackYear}
+							onChange={(e) => setEditTrackYear(e.target.value)}
+							style={{ width: '100%', boxSizing: 'border-box' }}
+						/>
+					</div>
+				</div>
+
+				<div style={{ display: 'flex', gap: '16px', justifyContent: 'flex-end', marginBottom: '40px', maxWidth: '600px' }}>
+					<button
+						className="btn-primary"
+						onClick={handleResetTrackFields}
+						disabled={submitting}
+					>
+						Reset
+					</button>
+					<button
+						className="btn-primary"
+						onClick={handleSaveTrackFields}
+						disabled={submitting}
+					>
+						{submitting ? 'Saving...' : 'Save'}
+					</button>
+				</div>
+
+				{/* Keywords Section */}
+				<div style={{ marginTop: '32px', borderTop: '1px solid var(--border-color)', paddingTop: '24px', maxWidth: '600px' }}>
+					{(!editingTrack.keywords || editingTrack.keywords.length === 0) ? (
+						<p className="metadata-text" style={{ fontSize: '14px', marginBottom: '20px' }}>No tags for this track.</p>
+					) : (
+						<div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '24px' }}>
+							{editingTrack.keywords.map(kw => (
+								<span
+									key={kw}
+									style={{
+										padding: '6px 12px',
+										borderRadius: '16px',
+										backgroundColor: 'rgba(255,255,255,0.05)',
+										border: '1px solid var(--border-color)',
+										color: 'var(--text-secondary)',
+										fontSize: '12px'
+									}}
+								>
+									{kw}
+								</span>
+							))}
+						</div>
+					)}
+
+					<div style={{ display: 'flex', gap: '12px' }}>
+						<button
+							className="btn-primary"
+							onClick={() => {
+								setNewKeywordInput('');
+								setShowAddModal(true);
+							}}
+						>
+							Add tag(s)
+						</button>
+						<button
+							className="btn-primary"
+							disabled={!editingTrack.keywords || editingTrack.keywords.length === 0}
+							onClick={() => {
+								setModalKeywordsForRemoval([]);
+								setShowRemoveModal(true);
+							}}
+						>
+							Remove tag(s)
+						</button>
+					</div>
+				</div>
+			</div>
+		);
 	};
 
 	return (
@@ -747,38 +1057,7 @@ export const EditMetadataView: React.FC<EditMetadataViewProps> = ({ serverUrl })
 			)}
 
 			{activeTab === 'edit-album' && (
-				editingTrack ? (
-					<div style={{ position: 'relative', minHeight: '300px' }}>
-						<div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
-							<h2 style={{ fontSize: '20px', fontWeight: 600, color: 'var(--text-primary)' }}>Edit Track: {editingTrack.title}</h2>
-							<button
-								onClick={handleBackFromEditTrack}
-								style={{
-									background: 'none',
-									border: 'none',
-									color: 'var(--text-secondary)',
-									cursor: 'pointer',
-									padding: '8px',
-									display: 'flex',
-									alignItems: 'center',
-									justifyContent: 'center',
-									transition: 'color 150ms ease-out',
-									flexShrink: 0,
-								}}
-								aria-label="Back"
-							>
-								<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-									<line x1="19" y1="12" x2="5" y2="12" />
-									<polyline points="12 19 5 12 12 5" />
-								</svg>
-							</button>
-						</div>
-						{/* Blank for now */}
-						<div style={{ padding: '40px 0', textAlign: 'center', color: 'var(--text-muted)' }}>
-							<p>Edit track details will go here.</p>
-						</div>
-					</div>
-				) : editingAlbum ? (
+				editingTrack ? renderEditTrackScreen() : editingAlbum ? (
 					<div style={{ position: 'relative', minHeight: '300px' }}>
 						<div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
 							<h2 style={{ fontSize: '20px', fontWeight: 600, color: 'var(--text-primary)' }}>Edit Album: {editingAlbum.title}</h2>
@@ -1249,9 +1528,112 @@ export const EditMetadataView: React.FC<EditMetadataViewProps> = ({ serverUrl })
 			)}
 
 			{activeTab === 'edit-track' && (
-				<div style={{ padding: '40px 0', textAlign: 'center', color: 'var(--text-muted)' }}>
-					<p>This tab is a placeholder for future implementation.</p>
-				</div>
+				editingTrack ? renderEditTrackScreen() : (
+					<div>
+						{/* Search input */}
+						<div className="search-container" style={{ maxWidth: '600px', margin: '0 auto 32px' }}>
+							<div className="search-input-wrapper">
+								<svg
+									className="search-icon-inside"
+									width="20"
+									height="20"
+									viewBox="0 0 24 24"
+									fill="none"
+									stroke="currentColor"
+									strokeWidth="2"
+									strokeLinecap="round"
+									strokeLinejoin="round"
+								>
+									<circle cx="11" cy="11" r="8" />
+									<line x1="21" y1="21" x2="16.65" y2="16.65" />
+								</svg>
+								<input
+									type="text"
+									className="search-input"
+									placeholder="Search tracks by title, artist, or composer..."
+									value={trackSearchQuery}
+									onChange={(e) => {
+										setTrackSearchQuery(e.target.value);
+										setTrackLimit(20);
+									}}
+								/>
+							</div>
+						</div>
+
+						{/* Tracks list */}
+						<div>
+							<h3 style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '16px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+								Tracks
+							</h3>
+							{loading ? (
+								<div className="loading-container">Loading tracks...</div>
+							) : (() => {
+								const filtered = tracks.filter(t => {
+									const query = trackSearchQuery.toLowerCase();
+									return (
+										(t.title || '').toLowerCase().includes(query) ||
+										(t.artist || '').toLowerCase().includes(query) ||
+										(t.composer || '').toLowerCase().includes(query)
+									);
+								});
+								const displayed = filtered.slice(0, trackLimit);
+
+								if (displayed.length === 0) {
+									return <p className="metadata-text">No tracks match the search criteria.</p>;
+								}
+
+								return (
+									<div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+										{displayed.map((track) => (
+											<div
+												key={track.id}
+												className="track-row"
+												style={{
+													display: 'flex',
+													justifyContent: 'space-between',
+													alignItems: 'center',
+													padding: '12px',
+													borderBottom: '1px solid var(--border-color)',
+													borderRadius: '4px'
+												}}
+											>
+												<div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+													<span style={{ fontWeight: 500, color: 'var(--text-primary)' }}>
+														{track.title}
+													</span>
+													<span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
+														{track.artist} {track.composer ? `• ${track.composer}` : ''}
+													</span>
+												</div>
+												<div style={{ display: 'flex', alignItems: 'center', gap: '24px' }}>
+													<button
+														className="btn-primary"
+														style={{ height: '32px', borderRadius: '16px', padding: '0 20px', fontSize: '12px' }}
+														onClick={() => setEditingTrack(track)}
+													>
+														Edit
+													</button>
+												</div>
+											</div>
+										))}
+
+										{filtered.length > trackLimit && (
+											<div style={{ display: 'flex', justifyContent: 'center', marginTop: '24px' }}>
+												<button
+													className="btn-primary"
+													style={{ height: '36px', borderRadius: '18px', padding: '0 24px', fontSize: '13px' }}
+													onClick={() => setTrackLimit(prev => prev + 20)}
+												>
+													View more
+												</button>
+											</div>
+										)}
+									</div>
+								);
+							})()}
+						</div>
+					</div>
+				)
 			)}
 
 			{/* Add Tag Modal */}
@@ -1378,7 +1760,53 @@ export const EditMetadataView: React.FC<EditMetadataViewProps> = ({ serverUrl })
 						<h3 style={{ fontSize: '20px', fontWeight: 600, marginBottom: '16px', color: 'var(--text-primary)' }}>
 							Confirm Tag Removal
 						</h3>
-						{activeTab === 'edit-album' ? (
+						{editingTrack ? (
+							<>
+								<p style={{ color: 'var(--text-secondary)', fontSize: '14px', lineHeight: 1.5, marginBottom: '12px' }}>
+									Select the keywords you wish to remove from this track:
+								</p>
+								<div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '24px' }}>
+									{(editingTrack.keywords || []).map(kw => {
+										const isSelected = modalKeywordsForRemoval.includes(kw);
+										return (
+											<button
+												key={kw}
+												type="button"
+												onClick={() => {
+													if (isSelected) {
+														setModalKeywordsForRemoval(modalKeywordsForRemoval.filter(k => k !== kw));
+													} else {
+														setModalKeywordsForRemoval([...modalKeywordsForRemoval, kw]);
+													}
+												}}
+												style={{
+													padding: '6px 12px',
+													borderRadius: '12px',
+													border: '1px solid',
+													borderColor: isSelected ? '#ef4444' : 'var(--border-color)',
+													backgroundColor: isSelected ? 'rgba(239, 68, 68, 0.1)' : 'var(--bg-panel)',
+													color: isSelected ? '#ef4444' : 'var(--text-secondary)',
+													fontSize: '12px',
+													cursor: 'pointer',
+													display: 'flex',
+													alignItems: 'center',
+													gap: '6px',
+													transition: 'all 150ms ease'
+												}}
+											>
+												<span>{kw}</span>
+												{isSelected && (
+													<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+														<line x1="18" y1="6" x2="6" y2="18" />
+														<line x1="6" y1="6" x2="18" y2="18" />
+													</svg>
+												)}
+											</button>
+										);
+									})}
+								</div>
+							</>
+						) : activeTab === 'edit-album' ? (
 							<>
 								<p style={{ color: 'var(--text-secondary)', fontSize: '14px', lineHeight: 1.5, marginBottom: '12px' }}>
 									Select the keywords you wish to remove from all tracks in this album:

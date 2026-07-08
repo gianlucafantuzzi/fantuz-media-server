@@ -62,6 +62,8 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("/api/library/tracks", s.handleTracks)
 	mux.HandleFunc("/api/playlists", s.handlePlaylists)
 	mux.HandleFunc("/api/playlists/", s.handlePlaylist)
+	mux.HandleFunc("/api/library/tracks/metadata", s.handleTrackMetadataUpdate)
+	mux.HandleFunc("/api/library/tracks/keywords", s.handleTrackKeywords)
 	mux.HandleFunc("/media/", s.handleMedia)
 	mux.HandleFunc("/artwork/", s.handleArtwork)
 	mux.HandleFunc("/ws/scan", s.handleScanWebSocket)
@@ -579,6 +581,111 @@ func (s *Server) handleAlbumMetadataUpdate(w http.ResponseWriter, r *http.Reques
 				return
 			}
 		}
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"status": "success"})
+}
+
+type trackMetadataUpdateReq struct {
+	TrackID     int64  `json:"track_id"`
+	Title       string `json:"title"`
+	Artist      string `json:"artist"`
+	Album       string `json:"album"`
+	AlbumArtist string `json:"album_artist"`
+	Composer    string `json:"composer"`
+	Date        string `json:"date"`
+}
+
+func (s *Server) handleTrackMetadataUpdate(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		methodNotAllowed(w)
+		return
+	}
+
+	var req trackMetadataUpdateReq
+	if !decodeJSON(w, r, &req) {
+		return
+	}
+
+	track, err := s.db.Track(req.TrackID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+
+	fields := map[string]string{
+		"title":        req.Title,
+		"artist":       req.Artist,
+		"album":        req.Album,
+		"album_artist": req.AlbumArtist,
+		"composer":     req.Composer,
+		"date":         req.Date,
+	}
+
+	if err := library.WriteMetadataFields(track.FilePath, fields); err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"status": "success"})
+}
+
+type trackKeywordsReq struct {
+	TrackID  int64    `json:"track_id"`
+	Keywords []string `json:"keywords"`
+}
+
+func (s *Server) handleTrackKeywords(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost && r.Method != http.MethodDelete {
+		methodNotAllowed(w)
+		return
+	}
+
+	var req trackKeywordsReq
+	if !decodeJSON(w, r, &req) {
+		return
+	}
+
+	track, err := s.db.Track(req.TrackID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+
+	var updatedKeywords []string
+	if r.Method == http.MethodPost {
+		keywordMap := make(map[string]bool)
+		for _, kw := range track.Keywords {
+			keywordMap[strings.ToLower(kw)] = true
+			updatedKeywords = append(updatedKeywords, kw)
+		}
+		for _, kw := range req.Keywords {
+			lower := strings.ToLower(kw)
+			if !keywordMap[lower] {
+				keywordMap[lower] = true
+				updatedKeywords = append(updatedKeywords, kw)
+			}
+		}
+	} else {
+		deleteMap := make(map[string]bool)
+		for _, kw := range req.Keywords {
+			deleteMap[strings.ToLower(kw)] = true
+		}
+		for _, kw := range track.Keywords {
+			if !deleteMap[strings.ToLower(kw)] {
+				updatedKeywords = append(updatedKeywords, kw)
+			}
+		}
+	}
+
+	if err := library.WriteKeywords(track.FilePath, updatedKeywords); err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+
+	if err := s.db.UpdateTrackKeywordsInDB(track.ID, updatedKeywords); err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
 	}
 
 	writeJSON(w, http.StatusOK, map[string]string{"status": "success"})

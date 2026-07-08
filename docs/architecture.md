@@ -288,12 +288,26 @@ The screen is divided into three tabs: "Add/remove tags", "Edit album metadata" 
     * Under the keywords, there are two buttons: "Add tag(s)" and "Remove tag(s)". They behave exactly as the similar buttons in the "Add/remove tags" tab, but they only work on the current album instead of a collection of selected albums.
     * Under all the aforementioned, all the tracks are listed, similarly to the "Album" screen, but without the duration. On the right side of each track is an "Edit" Button that results in the tab contents to switch to the "Edit track" screen.
 
-* The "Edit track" screen displays the following:
-    * On the top right of the screen, there is an arrow left button that sends you back to the previous screen. When the arrow is pressed to return to the "Edit album" screen, all fields (including the tags) are re-calculated, in case they have changed.
+* The "Edit track metadata" screen displays the following:
+    * A search bar used to search tracks by title, artist or composer
+    * Under the search bar, 20 tracks are listed (with a "View more" button to add 20 more at a time until exhaustion)
+    * On the right of each track is an "Edit" Button that results in the tab contents to switch to the "Edit track" screen.
 
-#### Edit track metadata tab
-
-
+* The "Edit album" screen displays the following:
+    * On the top right of the screen, there is an arrow left button that sends you back to the previous screen.
+    * Edit boxes for the following fields:
+        * Track title
+        * Artist
+        * Album title
+        * Album artist
+        * Artist
+        * Composer
+        * Year
+    The fields are pre-populated with the current values of the metadata of the track. After the fields, there are two buttons:
+        * "Reset" - restores the values of the fields from the metadata of the file
+        * "Save" - saves into the metadata of the track the values of all fields. Text boxes left blank cause any data in those fields to be replaced by an empty string. The metadata is actually saved in the files in the server. Then the library scan is invoked to update the DB.
+    * Under the fields, the keyword boxes are displayed for the keywords that are present in the track.
+    * Under the keywords, there are two buttons: "Add tag(s)" and "Remove tag(s)". They behave exactly as the similar buttons in the "Edit album" tab, but they only work on the current track.
 
 #### Playlists Screen
 
