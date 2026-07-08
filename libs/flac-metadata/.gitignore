@@ -1,0 +1,3 @@
+# Ignore files that may be used for testing
+*.mp3
+*.flac
