@@ -4,15 +4,13 @@ import (
 	"bytes"
 	"encoding/binary"
 	"testing"
-
-	"github.com/dhowden/tag"
 )
 
 func TestKeywordsFromRawSplitsTrimsAndDeduplicates(t *testing.T) {
 	keywords := KeywordsFromRaw(map[string]interface{}{
 		"KEYWORDS": "Live, Soundtrack, live, Piano",
 		"keyw":     []string{"Road trip, Piano"},
-		"TXXX":     &tag.Comm{Description: "Keywords", Text: "Late night"},
+		"keyword":  "Late night",
 	})
 
 	want := []string{"Live", "Soundtrack", "Piano", "Road trip", "Late night"}

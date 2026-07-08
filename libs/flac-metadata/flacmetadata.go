@@ -228,11 +228,17 @@ func parseVorbisComment(payload []byte) (map[string]string, error) {
 	return comments, nil
 }
 
-// ExtractPicture reads the PICTURE block from a FLAC file and saves the extracted image.
-func ExtractPicture(filePath string, outputDir string) (string, error) {
+type Picture struct {
+	MIMEType string
+	Ext      string
+	Data     []byte
+}
+
+// ReadPicture reads the PICTURE block from a FLAC file and returns the decoded picture structure in memory.
+func ReadPicture(filePath string) (*Picture, error) {
 	blocks, _, err := readBlocks(filePath)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
 	var pictureBlock *metadataBlock
@@ -244,50 +250,50 @@ func ExtractPicture(filePath string, outputDir string) (string, error) {
 	}
 
 	if pictureBlock == nil {
-		return "", errors.New("no PICTURE block found in FLAC file")
+		return nil, errors.New("no PICTURE block found in FLAC file")
 	}
 
 	reader := bytes.NewReader(pictureBlock.Payload)
 
 	// Skip Picture Type (4 bytes)
 	if _, err := reader.Seek(4, io.SeekCurrent); err != nil {
-		return "", fmt.Errorf("seek past picture type: %w", err)
+		return nil, fmt.Errorf("seek past picture type: %w", err)
 	}
 
 	var mimeLen uint32
 	if err := binary.Read(reader, binary.BigEndian, &mimeLen); err != nil {
-		return "", fmt.Errorf("read mime length: %w", err)
+		return nil, fmt.Errorf("read mime length: %w", err)
 	}
 
 	mimeBytes := make([]byte, mimeLen)
 	if _, err := io.ReadFull(reader, mimeBytes); err != nil {
-		return "", fmt.Errorf("read mime string: %w", err)
+		return nil, fmt.Errorf("read mime string: %w", err)
 	}
 	mimeType := string(mimeBytes)
 
 	var descLen uint32
 	if err := binary.Read(reader, binary.BigEndian, &descLen); err != nil {
-		return "", fmt.Errorf("read description length: %w", err)
+		return nil, fmt.Errorf("read description length: %w", err)
 	}
 
 	// Skip Description string
 	if _, err := reader.Seek(int64(descLen), io.SeekCurrent); err != nil {
-		return "", fmt.Errorf("seek past description: %w", err)
+		return nil, fmt.Errorf("seek past description: %w", err)
 	}
 
 	// Skip Width, Height, Depth, Color Count (4 * 4 = 16 bytes)
 	if _, err := reader.Seek(16, io.SeekCurrent); err != nil {
-		return "", fmt.Errorf("seek past dimensions: %w", err)
+		return nil, fmt.Errorf("seek past dimensions: %w", err)
 	}
 
 	var dataLen uint32
 	if err := binary.Read(reader, binary.BigEndian, &dataLen); err != nil {
-		return "", fmt.Errorf("read picture data length: %w", err)
+		return nil, fmt.Errorf("read picture data length: %w", err)
 	}
 
 	pictureData := make([]byte, dataLen)
 	if _, err := io.ReadFull(reader, pictureData); err != nil {
-		return "", fmt.Errorf("read picture data: %w", err)
+		return nil, fmt.Errorf("read picture data: %w", err)
 	}
 
 	ext := ".img"
@@ -305,13 +311,27 @@ func ExtractPicture(filePath string, outputDir string) (string, error) {
 		}
 	}
 
+	return &Picture{
+		MIMEType: mimeType,
+		Ext:      ext,
+		Data:     pictureData,
+	}, nil
+}
+
+// ExtractPicture reads the PICTURE block from a FLAC file and saves the extracted image.
+func ExtractPicture(filePath string, outputDir string) (string, error) {
+	pic, err := ReadPicture(filePath)
+	if err != nil {
+		return "", err
+	}
+
 	if err := os.MkdirAll(outputDir, 0755); err != nil {
 		return "", fmt.Errorf("create output directory: %w", err)
 	}
 
 	baseName := strings.TrimSuffix(filepath.Base(filePath), filepath.Ext(filePath))
-	outPath := filepath.Join(outputDir, baseName+ext)
-	if err := os.WriteFile(outPath, pictureData, 0644); err != nil {
+	outPath := filepath.Join(outputDir, baseName+pic.Ext)
+	if err := os.WriteFile(outPath, pic.Data, 0644); err != nil {
 		return "", fmt.Errorf("write extracted picture file: %w", err)
 	}
 

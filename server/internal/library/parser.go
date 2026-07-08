@@ -2,16 +2,16 @@ package library
 
 import (
 	"encoding/binary"
+	"encoding/json"
 	"errors"
 	"io"
 	"os"
 	"path/filepath"
-	"sort"
 	"strconv"
 	"strings"
 
 	"github.com/bogem/id3v2/v2"
-	"github.com/dhowden/tag"
+	"fantuz-media-server/libs/flac-metadata"
 )
 
 type Parser interface {
@@ -47,17 +47,8 @@ func (TagParser) Parse(path string) (TrackMetadata, error) {
 	}
 	defer file.Close()
 
-	// Check if file starts with ID3v2
-	header := make([]byte, 10)
-	isID3 := false
-	id3Size := 0
-	if _, err := io.ReadFull(file, header); err == nil && string(header[:3]) == "ID3" {
-		isID3 = true
-		id3Size = 10 + (int(header[6]&0x7f)<<21 | int(header[7]&0x7f)<<14 | int(header[8]&0x7f)<<7 | int(header[9]&0x7f))
-	}
-	file.Seek(0, io.SeekStart)
-
 	isMP3 := strings.ToLower(filepath.Ext(path)) == ".mp3"
+	isFLAC := strings.ToLower(filepath.Ext(path)) == ".flac"
 
 	var title, artist, album, albumArtist, composer, genre string
 	var date, discNumber, totalDiscs, trackNumber, totalTracks int
@@ -65,14 +56,11 @@ func (TagParser) Parse(path string) (TrackMetadata, error) {
 	var artwork *Artwork
 	var raw map[string]interface{}
 
-	parsedWithBogem := false
-
 	if isMP3 {
 		// Use bogem as the primary parser for MP3
 		tagObj, err := id3v2.Open(path, id3v2.Options{Parse: true})
 		if err == nil {
 			defer tagObj.Close()
-			parsedWithBogem = true
 			title = tagObj.Title()
 			artist = tagObj.Artist()
 			album = tagObj.Album()
@@ -169,62 +157,116 @@ func (TagParser) Parse(path string) (TrackMetadata, error) {
 				}
 			}
 		}
-	}
-
-	// Only invoke dhowden if it's not MP3, or bogem failed, or bogem succeeded but artwork was not picked up correctly
-	if !parsedWithBogem || artwork == nil {
-		var seeker io.ReadSeeker = file
-		if isID3 {
-			if _, err := file.Seek(int64(id3Size), io.SeekStart); err == nil {
-				flacCheck := make([]byte, 4)
-				if _, err := io.ReadFull(file, flacCheck); err == nil && string(flacCheck) == "fLaC" {
-					file.Seek(int64(id3Size), io.SeekStart)
-					seeker = offsetReadSeeker{r: file, offset: int64(id3Size)}
-				} else {
-					file.Seek(0, io.SeekStart)
-				}
-			} else {
-				file.Seek(0, io.SeekStart)
-			}
-		} else {
-			file.Seek(0, io.SeekStart)
-		}
-
-		metadata, err := tag.ReadFrom(seeker)
-		if err == nil {
-			raw = metadata.Raw()
-			if !parsedWithBogem {
-				title = metadata.Title()
-				artist = metadata.Artist()
-				album = metadata.Album()
-				albumArtist = metadata.AlbumArtist()
-				composer = metadata.Composer()
-				if metadata.Format() == tag.VORBIS {
-					if rawVal, ok := raw["composer"]; ok {
-						if strVal, ok := rawVal.(string); ok {
-							composer = strVal
-						}
-					} else {
-						composer = ""
-					}
-				}
-				genre = metadata.Genre()
-				date = metadata.Year()
-				trackNumber, totalTracks = metadata.Track()
-				discNumber, totalDiscs = metadata.Disc()
-				keywords = KeywordsFromRaw(raw)
-			}
-
-			if picture := metadata.Picture(); picture != nil {
-				artwork = &Artwork{
-					Ext:      picture.Ext,
-					MIMEType: picture.MIMEType,
-					Data:     picture.Data,
-				}
-			}
-		} else if !parsedWithBogem {
+	} else if isFLAC {
+		jsonStr, err := flacmetadata.ReadCommentsJSON(path)
+		if err != nil {
 			return TrackMetadata{}, err
 		}
+		var comments map[string]string
+		if err := json.Unmarshal([]byte(jsonStr), &comments); err == nil {
+			title = comments["title"]
+			artist = comments["artist"]
+			album = comments["album"]
+			albumArtist = comments["albumartist"]
+			if albumArtist == "" {
+				albumArtist = comments["artist"]
+			}
+			composer = comments["composer"]
+			genre = comments["genre"]
+
+			// Date / Year
+			dateStr := comments["date"]
+			if dateStr == "" {
+				dateStr = comments["year"]
+			}
+			if len(dateStr) >= 4 {
+				if yearInt, err := strconv.Atoi(dateStr[:4]); err == nil {
+					date = yearInt
+				}
+			} else if dateStr != "" {
+				if yearInt, err := strconv.Atoi(dateStr); err == nil {
+					date = yearInt
+				}
+			}
+
+			// Track Number & Total Tracks
+			tr := comments["tracknumber"]
+			if tr != "" {
+				parts := strings.Split(tr, "/")
+				if len(parts) >= 1 {
+					if val, parseErr := strconv.Atoi(parts[0]); parseErr == nil {
+						trackNumber = val
+					}
+				}
+				if len(parts) >= 2 {
+					if val, parseErr := strconv.Atoi(parts[1]); parseErr == nil {
+						totalTracks = val
+					}
+				}
+			}
+			if totalTracks == 0 {
+				if val, parseErr := strconv.Atoi(comments["tracktotal"]); parseErr == nil {
+					totalTracks = val
+				} else if val, parseErr := strconv.Atoi(comments["totaltracks"]); parseErr == nil {
+					totalTracks = val
+				}
+			}
+
+			// Disc Number & Total Discs
+			pos := comments["discnumber"]
+			if pos != "" {
+				parts := strings.Split(pos, "/")
+				if len(parts) >= 1 {
+					if val, parseErr := strconv.Atoi(parts[0]); parseErr == nil {
+						discNumber = val
+					}
+				}
+				if len(parts) >= 2 {
+					if val, parseErr := strconv.Atoi(parts[1]); parseErr == nil {
+						totalDiscs = val
+					}
+				}
+			}
+			if totalDiscs == 0 {
+				if val, parseErr := strconv.Atoi(comments["disctotal"]); parseErr == nil {
+					totalDiscs = val
+				} else if val, parseErr := strconv.Atoi(comments["totaldiscs"]); parseErr == nil {
+					totalDiscs = val
+				}
+			}
+
+			// Keywords
+			kwStr := comments["keywords"]
+			if kwStr == "" {
+				kwStr = comments["keyword"]
+			}
+			if kwStr != "" {
+				seen := map[string]bool{}
+				for _, part := range strings.Split(kwStr, ",") {
+					part = strings.TrimSpace(part)
+					if part != "" && !seen[strings.ToLower(part)] {
+						seen[strings.ToLower(part)] = true
+						keywords = append(keywords, part)
+					}
+				}
+			}
+
+			raw = make(map[string]interface{})
+			for k, v := range comments {
+				raw[k] = v
+			}
+		}
+
+		// Read embedded artwork
+		if pic, picErr := flacmetadata.ReadPicture(path); picErr == nil && pic != nil {
+			artwork = &Artwork{
+				Ext:      pic.Ext,
+				MIMEType: pic.MIMEType,
+				Data:     pic.Data,
+			}
+		}
+	} else {
+		return TrackMetadata{}, errors.New("unsupported file format")
 	}
 
 	stat, errStat := file.Stat()
@@ -272,18 +314,6 @@ func KeywordsFromRaw(raw map[string]interface{}) []string {
 		}
 	}
 
-	keys := make([]string, 0, len(raw))
-	for key := range raw {
-		keys = append(keys, key)
-	}
-	sort.Strings(keys)
-	for _, key := range keys {
-		comm, ok := raw[key].(*tag.Comm)
-		if ok && isKeywordDescription(comm.Description) {
-			values = append(values, comm.Text)
-		}
-	}
-
 	seen := map[string]bool{}
 	keywords := make([]string, 0, len(values))
 	for _, value := range values {
@@ -303,8 +333,6 @@ func rawStringValues(value interface{}) []string {
 	switch v := value.(type) {
 	case string:
 		return []string{v}
-	case *tag.Comm:
-		return []string{v.Text}
 	case []string:
 		return v
 	case []interface{}:

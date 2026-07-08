@@ -91,7 +91,7 @@ func (s Scanner) Scan(root string) (ScanResult, error) {
 
 func isAudioFile(path string) bool {
 	switch strings.ToLower(filepath.Ext(path)) {
-	case ".mp3", ".m4a", ".m4b", ".flac", ".ogg":
+	case ".mp3", ".flac":
 		return true
 	default:
 		return false

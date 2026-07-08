@@ -15,6 +15,17 @@ func ReadCommentsJSON(filePath string) (string, error)
   - If the file is not a valid FLAC file (magic number `fLaC` check).
   - If the file cannot be opened or parsed.
 
+### `ReadPicture`
+Reads the embedded metadata picture block from a FLAC file and returns it as a struct in memory.
+```go
+func ReadPicture(filePath string) (*Picture, error)
+```
+- **Inputs**: `filePath` (string) - Path to the FLAC file.
+- **Returns**: A pointer to a `Picture` struct containing the MIME type, extension, and raw binary bytes of the image, or an error.
+- **Errors**:
+  - If the file is not a valid FLAC file.
+  - If the file contains no picture blocks.
+
 ---
 
 ### `ExtractPicture`
