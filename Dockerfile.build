@@ -1,0 +1,6 @@
+FROM --platform=linux/amd64 golang:1.22-bullseye
+RUN dpkg --add-architecture armhf && \
+    apt-get update && \
+    apt-get install -y gcc-arm-linux-gnueabihf libasound2-dev:armhf ca-certificates pkg-config
+ENV CGO_ENABLED=1 GOOS=linux GOARCH=arm GOARM=7 CC=arm-linux-gnueabihf-gcc PKG_CONFIG_PATH=/usr/lib/arm-linux-gnueabihf/pkgconfig
+WORKDIR /app

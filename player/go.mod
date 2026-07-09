@@ -1,6 +1,6 @@
 module fantuz-media-server/player
 
-go 1.26
+go 1.22
 
 require github.com/gopxl/beep v1.4.1
 

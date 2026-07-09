@@ -1,6 +1,6 @@
 module fantuz-media-server/server
 
-go 1.26
+go 1.22
 
 replace fantuz-media-server/libs/flac-metadata => ../libs/flac-metadata
 
