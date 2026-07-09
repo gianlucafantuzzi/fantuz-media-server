@@ -11,7 +11,6 @@ import (
 	"github.com/gopxl/beep/speaker"
 
 	"fantuz-media-server/player/internal/queue"
-	"fantuz-media-server/player/internal/state"
 )
 
 var (
@@ -38,7 +37,6 @@ type Engine struct {
 	paused      bool
 	position    time.Duration
 	duration    time.Duration
-	statePath   string
 	sampleRate  beep.SampleRate
 	httpClient  *http.Client
 	onChange    func(Status)
@@ -47,11 +45,10 @@ type Engine struct {
 	activeCtrl  *beep.Ctrl
 }
 
-func New(statePath string, onChange func(Status)) *Engine {
+func New(onChange func(Status)) *Engine {
 	return &Engine{
 		queue:      queue.New(nil, 0),
 		volume:     1,
-		statePath:  statePath,
 		sampleRate: beep.SampleRate(44100),
 		httpClient: &http.Client{Timeout: 0},
 		onChange:   onChange,
@@ -66,20 +63,6 @@ func (e *Engine) SetOnChange(onChange func(Status)) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	e.onChange = onChange
-}
-
-func (e *Engine) Restore(snapshot state.Snapshot) {
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	e.queue = queue.New(snapshot.Queue, snapshot.QueueIndex)
-	if snapshot.Volume > 0 {
-		e.volume = snapshot.Volume
-	}
-	e.position = time.Duration(snapshot.PositionSeconds * float64(time.Second))
-	e.playing = false
-	e.paused = !snapshot.Playing
-	e.duration = trackDuration(e.queue)
-	e.notifyLocked()
 }
 
 func (e *Engine) Status() Status {
@@ -103,7 +86,6 @@ func (e *Engine) SetQueue(tracks []queue.Track, replace bool) {
 		}
 		e.duration = trackDuration(e.queue)
 	}
-	e.persistLocked()
 	e.notifyLocked()
 }
 
@@ -117,7 +99,6 @@ func (e *Engine) Play() error {
 		e.paused = false
 		e.playing = true
 		e.activeCtrl.Paused = false
-		e.persistLocked()
 		e.notifyLocked()
 		return nil
 	}
@@ -149,7 +130,6 @@ func (e *Engine) Pause() error {
 	if e.activeCtrl != nil {
 		e.activeCtrl.Paused = true
 	}
-	e.persistLocked()
 	e.notifyLocked()
 	return nil
 }
@@ -181,7 +161,6 @@ func (e *Engine) SetVolume(volume float64) error {
 	if e.playing || e.paused {
 		return e.startCurrentLocked()
 	}
-	e.persistLocked()
 	e.notifyLocked()
 	return nil
 }
@@ -220,7 +199,6 @@ func (e *Engine) startCurrentLocked() error {
 	done := make(chan struct{})
 	e.streamDone = done
 	go e.playTrack(version, track, e.position, done)
-	e.persistLocked()
 	e.notifyLocked()
 	return nil
 }
@@ -290,7 +268,6 @@ func (e *Engine) playTrack(version int, track queue.Track, startAt time.Duration
 				position += time.Second
 				e.position = position
 			}
-			e.persistLocked()
 			e.notifyLocked()
 			e.mu.Unlock()
 		}
@@ -313,7 +290,6 @@ func (e *Engine) finishTrack(version int, advance bool) {
 			return
 		}
 	}
-	e.persistLocked()
 	e.notifyLocked()
 }
 
@@ -351,18 +327,6 @@ func (e *Engine) statusLocked() Status {
 	}
 }
 
-func (e *Engine) persistLocked() {
-	if e.statePath == "" {
-		return
-	}
-	_ = state.Save(e.statePath, state.Snapshot{
-		Volume:          e.volume,
-		Queue:           e.queue.Items(),
-		QueueIndex:      e.queue.Index(),
-		PositionSeconds: e.position.Seconds(),
-		Playing:         e.playing && !e.paused,
-	})
-}
 
 func (e *Engine) notifyLocked() {
 	if e.onChange == nil {

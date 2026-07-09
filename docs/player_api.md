@@ -135,13 +135,3 @@ The server sends the current status immediately after the connection is establis
 
 Message shape matches the `GET /status` response.
 
-## Persistence
-
-Player state is stored in `player_state.json` beside the running player executable. The file remembers:
-
-- queue and current queue index
-- paused position within the current track
-- volume
-- whether playback was active
-
-On startup, the queue and position are restored. Playback does not resume automatically until the frontend calls `POST /play`.

@@ -1,7 +1,6 @@
 package playback
 
 import (
-	"path/filepath"
 	"testing"
 	"time"
 
@@ -11,8 +10,7 @@ import (
 )
 
 func TestSetQueueNotifiesWithoutDeadlock(t *testing.T) {
-	statePath := filepath.Join(t.TempDir(), "player_state.json")
-	engine := New(statePath, nil)
+	engine := New(nil)
 
 	done := make(chan struct{}, 1)
 	engine.SetOnChange(func(Status) {
@@ -30,7 +28,7 @@ func TestSetQueueNotifiesWithoutDeadlock(t *testing.T) {
 }
 
 func TestSetQueueAppendKeepsCurrentPlaybackRunning(t *testing.T) {
-	engine := New("", nil)
+	engine := New(nil)
 	engine.queue.Replace([]queue.Track{{URL: "http://example/current.mp3", Title: "Current"}})
 	engine.playing = true
 	engine.paused = false
@@ -53,7 +51,7 @@ func TestSetQueueAppendKeepsCurrentPlaybackRunning(t *testing.T) {
 }
 
 func TestSetQueueReplaceWhilePlayingKeepsCurrentPlaybackRunning(t *testing.T) {
-	engine := New("", nil)
+	engine := New(nil)
 	engine.queue.Replace([]queue.Track{{URL: "http://example/current.mp3", Title: "Current"}})
 	engine.playing = true
 	engine.paused = false
