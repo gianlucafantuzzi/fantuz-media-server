@@ -20,8 +20,6 @@ Returns the current playback status.
     "url": "http://localhost:3001/media/42",
     "title": "Example",
     "artist": "Artist",
-    "composer": "Composer",
-    "date": 2020,
     "artwork_url": "http://localhost:3001/artwork/7",
     "duration_seconds": 240
   },

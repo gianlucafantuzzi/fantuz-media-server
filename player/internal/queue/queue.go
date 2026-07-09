@@ -8,8 +8,6 @@ type Track struct {
 	URL             string `json:"url"`
 	Title           string `json:"title"`
 	Artist          string `json:"artist"`
-	Composer        string `json:"composer,omitempty"`
-	Date            int    `json:"date,omitempty"`
 	ArtworkURL      string `json:"artwork_url,omitempty"`
 	DurationSeconds int    `json:"duration_seconds"`
 }

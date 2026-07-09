@@ -74,6 +74,34 @@ GET /api/library/albums?keyword=Live
 
 Returns tracks for one album ordered by disc number, track number, and title.
 
+Example:
+
+```text
+GET /api/library/albums/1/tracks
+```
+
+Response:
+```json
+[
+  {
+    "id": 12,
+    "album_id": 1,
+    "file_path": "/Volumes/Music/Song.flac",
+    "title": "Song",
+    "artist": "An artist",
+    "duration_seconds": 260,
+    "composer": "Some composer",
+    "genre": "Rock",
+    "date": 1993,
+    "disc_number": 1,
+    "total_discs": 1,
+    "track_number": 1,
+    "total_tracks": 12,
+    "keywords": ["Favorite", "Rock"]
+  }
+]
+```
+
 ### `POST /api/library/albums/metadata`
 
 Updates the metadata (album title, album artist, artist, composer, and release date/year) for all tracks belonging to the specified album. Updates both physical audio file tags and the database.
