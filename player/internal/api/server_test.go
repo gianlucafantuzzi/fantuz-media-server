@@ -70,7 +70,7 @@ func TestHandleQueueAndPlay(t *testing.T) {
 	player := &mockPlayer{}
 	server := New(player)
 
-	queueBody := `{"tracks":[{"url":"http://example/track.mp3","title":"Song","artist":"Artist","duration_seconds":180}],"replace":true}`
+	queueBody := `{"tracks":[{"id":12,"url":"http://example/track.mp3","duration_seconds":180}],"replace":true}`
 	queueRequest := httptest.NewRequest(http.MethodPost, "/queue", bytes.NewBufferString(queueBody))
 	queueRecorder := httptest.NewRecorder()
 	server.Routes().ServeHTTP(queueRecorder, queueRequest)

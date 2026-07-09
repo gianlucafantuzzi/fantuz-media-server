@@ -315,4 +315,23 @@ func (db *DB) UpdateTrackKeywordsInDB(trackID int64, keywords []string) error {
 	return tx.Commit()
 }
 
+func (db *DB) GetTracks(ids []int64) ([]Track, error) {
+	if len(ids) == 0 {
+		return []Track{}, nil
+	}
+	placeholders := make([]string, len(ids))
+	args := make([]any, len(ids))
+	for i, id := range ids {
+		placeholders[i] = "?"
+		args[i] = id
+	}
+	query := fmt.Sprintf(`
+		SELECT id, album_id, file_path, title, artist, duration_seconds, composer,
+			genre, date, disc_number, total_discs, track_number, total_tracks
+		FROM tracks
+		WHERE id IN (%s)
+	`, strings.Join(placeholders, ","))
+	return db.queryTracks(query, args...)
+}
+
 var ErrNotFound = errors.New("not found")

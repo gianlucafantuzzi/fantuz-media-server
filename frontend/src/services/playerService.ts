@@ -28,6 +28,7 @@ export interface PlayerStatus {
   duration_seconds: number;
   volume: number;
   current_track: {
+    id?: number;
     url: string;
     title: string;
     artist: string;
@@ -44,6 +45,56 @@ class PlayerService {
   private playerType: 'Browser' | string = 'Browser';
   private onStatusUpdate: StatusCallback | null = null;
   private serverUrl: string = '';
+  private trackCache: Record<number, any> = {};
+
+  public setServerUrl(url: string) {
+    this.serverUrl = url;
+  }
+
+  private async enrichRemoteStatus(remoteStatus: any): Promise<PlayerStatus> {
+    if (!remoteStatus.current_track || !remoteStatus.current_track.id || !this.serverUrl) {
+      return remoteStatus;
+    }
+    const trackId = remoteStatus.current_track.id;
+    if (this.trackCache[trackId]) {
+      const track = this.trackCache[trackId];
+      return {
+        ...remoteStatus,
+        current_track: {
+          ...remoteStatus.current_track,
+          title: track.title,
+          artist: track.artist,
+          artwork_url: track.album_id ? `${this.serverUrl}/artwork/${track.album_id}` : undefined,
+        },
+      };
+    }
+    try {
+      const response = await fetch(`${this.serverUrl}/api/library/tracks/batch`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: [trackId] }),
+      });
+      if (response.ok) {
+        const tracks = await response.json();
+        if (tracks && tracks.length > 0) {
+          const track = tracks[0];
+          this.trackCache[trackId] = track;
+          return {
+            ...remoteStatus,
+            current_track: {
+              ...remoteStatus.current_track,
+              title: track.title,
+              artist: track.artist,
+              artwork_url: track.album_id ? `${this.serverUrl}/artwork/${track.album_id}` : undefined,
+            },
+          };
+        }
+      }
+    } catch (err) {
+      console.error('Error enriching remote status:', err);
+    }
+    return remoteStatus;
+  }
 
   // Local Browser Player Queue & State
   private localAudio: HTMLAudioElement | null = null;
@@ -178,7 +229,8 @@ class PlayerService {
       if (response.ok) {
         const remoteStatus = await response.json();
         if (this.playerType === playerUrl && this.onStatusUpdate) {
-          this.onStatusUpdate(remoteStatus);
+          const enriched = await this.enrichRemoteStatus(remoteStatus);
+          this.onStatusUpdate(enriched);
         }
       }
     } catch (err) {
@@ -192,11 +244,12 @@ class PlayerService {
       const wsUrl = playerUrl.replace(/^http/, 'ws') + '/ws';
       this.ws = new WebSocket(wsUrl);
 
-      this.ws.onmessage = (event) => {
+      this.ws.onmessage = async (event) => {
         try {
           const remoteStatus = JSON.parse(event.data);
           if (this.playerType === playerUrl && this.onStatusUpdate) {
-            this.onStatusUpdate(remoteStatus);
+            const enriched = await this.enrichRemoteStatus(remoteStatus);
+            this.onStatusUpdate(enriched);
           }
         } catch (e) {
           console.error('Error parsing remote player status:', e);
@@ -278,10 +331,8 @@ class PlayerService {
           body: JSON.stringify({
             replace: true,
             tracks: tracks.map((t) => ({
+              id: t.id,
               url: `${serverUrl}/media/${t.id}`,
-              title: t.title,
-              artist: t.artist,
-              artwork_url: `${serverUrl}/artwork/${t.album_id}`,
               duration_seconds: t.duration_seconds,
             })),
           }),
@@ -349,10 +400,8 @@ class PlayerService {
           body: JSON.stringify({
             replace: false,
             tracks: tracks.map((t) => ({
+              id: t.id,
               url: `${serverUrl}/media/${t.id}`,
-              title: t.title,
-              artist: t.artist,
-              artwork_url: `${serverUrl}/artwork/${t.album_id}`,
               duration_seconds: t.duration_seconds,
             })),
           }),

@@ -60,6 +60,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("/api/library/albums/metadata", s.handleAlbumMetadataUpdate)
 	mux.HandleFunc("/api/library/keywords", s.handleKeywords)
 	mux.HandleFunc("/api/library/tracks", s.handleTracks)
+	mux.HandleFunc("/api/library/tracks/batch", s.handleTracksBatch)
 	mux.HandleFunc("/api/playlists", s.handlePlaylists)
 	mux.HandleFunc("/api/playlists/", s.handlePlaylist)
 	mux.HandleFunc("/api/library/tracks/metadata", s.handleTrackMetadataUpdate)
@@ -208,6 +209,30 @@ func (s *Server) handleTracks(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
+	writeJSON(w, http.StatusOK, tracks)
+}
+
+type tracksBatchReq struct {
+	IDs []int64 `json:"ids"`
+}
+
+func (s *Server) handleTracksBatch(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		methodNotAllowed(w)
+		return
+	}
+
+	var req tracksBatchReq
+	if !decodeJSON(w, r, &req) {
+		return
+	}
+
+	tracks, err := s.db.GetTracks(req.IDs)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+
 	writeJSON(w, http.StatusOK, tracks)
 }
 

@@ -17,10 +17,8 @@ Returns the current playback status.
   "duration_seconds": 240,
   "volume": 1,
   "current_track": {
+    "id": 42,
     "url": "http://localhost:3001/media/42",
-    "title": "Example",
-    "artist": "Artist",
-    "artwork_url": "http://localhost:3001/artwork/7",
     "duration_seconds": 240
   },
   "queue_index": 0,
@@ -42,9 +40,8 @@ Request body:
 {
   "tracks": [
     {
+      "id": 42,
       "url": "http://localhost:3001/media/42",
-      "title": "Example",
-      "artist": "Artist",
       "duration_seconds": 240
     }
   ],

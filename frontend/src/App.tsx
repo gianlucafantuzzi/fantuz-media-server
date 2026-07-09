@@ -127,6 +127,11 @@ function App() {
     });
   }, []);
 
+  // Sync selected server URL to playerService
+  useEffect(() => {
+    playerService.setServerUrl(selectedServer);
+  }, [selectedServer]);
+
   // Sync selected player device type to playerService
   useEffect(() => {
     if (activeDevice === 'This device') {

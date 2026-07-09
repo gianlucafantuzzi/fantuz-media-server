@@ -5,10 +5,8 @@ import "errors"
 var ErrEmpty = errors.New("queue is empty")
 
 type Track struct {
+	ID              int64  `json:"id"`
 	URL             string `json:"url"`
-	Title           string `json:"title"`
-	Artist          string `json:"artist"`
-	ArtworkURL      string `json:"artwork_url,omitempty"`
 	DurationSeconds int    `json:"duration_seconds"`
 }
 

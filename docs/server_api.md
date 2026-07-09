@@ -124,6 +124,55 @@ Response: Status 200 OK.
 
 Returns tracks. Supports the same query parameters as `/api/library/albums`.
 
+### `POST /api/library/tracks/batch`
+
+Returns metadata for multiple tracks specified by a list of track IDs.
+
+Request body:
+```json
+{
+  "ids": [12, 13]
+}
+```
+
+Response:
+```json
+[
+  {
+    "id": 12,
+    "album_id": 1,
+    "file_path": "/Volumes/Music/Song1.flac",
+    "title": "Song 1",
+    "artist": "An artist",
+    "duration_seconds": 260,
+    "composer": "Some composer",
+    "genre": "Rock",
+    "date": 1993,
+    "disc_number": 1,
+    "total_discs": 1,
+    "track_number": 1,
+    "total_tracks": 12,
+    "keywords": ["Favorite"]
+  },
+  {
+    "id": 13,
+    "album_id": 1,
+    "file_path": "/Volumes/Music/Song2.flac",
+    "title": "Song 2",
+    "artist": "An artist",
+    "duration_seconds": 240,
+    "composer": "Some composer",
+    "genre": "Rock",
+    "date": 1993,
+    "disc_number": 1,
+    "total_discs": 1,
+    "track_number": 2,
+    "total_tracks": 12,
+    "keywords": []
+  }
+]
+```
+
 ### `POST /api/library/tracks/metadata`
 
 Updates the metadata (title, artist, album, album artist, composer, and release date/year) for the specified track. Updates both the physical audio file tags and the database.

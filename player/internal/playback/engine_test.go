@@ -18,7 +18,7 @@ func TestSetQueueNotifiesWithoutDeadlock(t *testing.T) {
 		done <- struct{}{}
 	})
 
-	engine.SetQueue([]queue.Track{{URL: "http://example/track.flac", Title: "Test"}}, true)
+	engine.SetQueue([]queue.Track{{ID: 1, URL: "http://example/track.flac"}}, true)
 
 	select {
 	case <-done:
@@ -29,12 +29,12 @@ func TestSetQueueNotifiesWithoutDeadlock(t *testing.T) {
 
 func TestSetQueueAppendKeepsCurrentPlaybackRunning(t *testing.T) {
 	engine := New(nil)
-	engine.queue.Replace([]queue.Track{{URL: "http://example/current.mp3", Title: "Current"}})
+	engine.queue.Replace([]queue.Track{{ID: 1, URL: "http://example/current.mp3"}})
 	engine.playing = true
 	engine.paused = false
 	engine.activeCtrl = &beep.Ctrl{}
 
-	engine.SetQueue([]queue.Track{{URL: "http://example/next.mp3", Title: "Next"}}, false)
+	engine.SetQueue([]queue.Track{{ID: 2, URL: "http://example/next.mp3"}}, false)
 
 	if !engine.playing {
 		t.Fatal("expected playback to continue after appending to the queue")
@@ -52,12 +52,12 @@ func TestSetQueueAppendKeepsCurrentPlaybackRunning(t *testing.T) {
 
 func TestSetQueueReplaceWhilePlayingKeepsCurrentPlaybackRunning(t *testing.T) {
 	engine := New(nil)
-	engine.queue.Replace([]queue.Track{{URL: "http://example/current.mp3", Title: "Current"}})
+	engine.queue.Replace([]queue.Track{{ID: 1, URL: "http://example/current.mp3"}})
 	engine.playing = true
 	engine.paused = false
 	engine.activeCtrl = &beep.Ctrl{}
 
-	engine.SetQueue([]queue.Track{{URL: "http://example/next.mp3", Title: "Next"}}, true)
+	engine.SetQueue([]queue.Track{{ID: 2, URL: "http://example/next.mp3"}}, true)
 
 	if !engine.playing {
 		t.Fatal("expected playback to continue after queueing a track while already playing")
