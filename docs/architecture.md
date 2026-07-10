@@ -273,7 +273,12 @@ The "Track" screen is used to provide all information about a track and play it 
     * Below the artwork and metadata, the same transport controls available in the "Player Bar"
     * Below the transport controls, the same progress bar that is displayed in the "Player Bar"
 
-* On the right of the "Queue Screen", there is an item indicating a hidden panel. By clicking on it, the "Queue Panel" is slide open from the right. The panel contains a vertical (potentially scrollable) list of all the tracks currently in the queue (obtained from the player). Each lines contains a small workart, the title of the track, the artist and the duration. The track that is currently playing (or paused on) is highlighted. 
+* On the right of the "Queue Screen", there is an item indicating a hidden panel. By clicking on it, the "Queue Panel" is slide open from the right. The panel contains a vertical (potentially scrollable) list of all the tracks currently in the queue (obtained from the player). Each lines contains a small workart, the title of the track, the artist and the duration. The track that is currently playing (or paused on) is highlighted.
+
+* Next to each track in the "Queue Panel" there is an icon to remove the track from the queue. The removal is reflected in the actual queue within the Player application. If the track is the currently playing track (or paused on), the playback is stopped and the following track becomes active. The following rules apply:
+    * If the current track was paused, the track that replaces it as the active track shall start as paused
+    * If there is no following track, the previous track becomes active
+    * If there are no following and no previous tracks in the queue, then the "Queue Screen" slides down and at the end no "Player Bar" shall be visible
 
 
 #### Edit Metadata Screen

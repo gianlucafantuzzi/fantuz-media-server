@@ -598,6 +598,97 @@ class PlayerService {
     }
   }
 
+  public async removeTrack(index: number) {
+    if (this.playerType === 'Browser') {
+      if (index < 0 || index >= this.localQueue.length) return;
+
+      const activeIndex = this.localQueueIndex;
+      const wasPlaying = this.localStatus.playing;
+
+      if (index < activeIndex) {
+        this.localQueue.splice(index, 1);
+        this.localQueueIndex = activeIndex - 1;
+        this.localStatus.queue_index = this.localQueueIndex;
+        this.localStatus.queue_length = this.localQueue.length;
+        this.triggerUpdate();
+        return;
+      }
+
+      if (index > activeIndex) {
+        this.localQueue.splice(index, 1);
+        this.localStatus.queue_length = this.localQueue.length;
+        this.triggerUpdate();
+        return;
+      }
+
+      // If removing the active track:
+      if (this.localAudio) {
+        this.localAudio.pause();
+      }
+
+      this.localQueue.splice(index, 1);
+
+      if (this.localQueue.length === 0) {
+        this.localQueueIndex = 0;
+        this.localStatus.current_track = null;
+        this.localStatus.playing = false;
+        this.localStatus.position_seconds = 0;
+        this.localStatus.duration_seconds = 0;
+        this.localStatus.queue_index = 0;
+        this.localStatus.queue_length = 0;
+        this.triggerUpdate();
+        return;
+      }
+
+      // Determine new active index
+      let newIndex = index;
+      if (index >= this.localQueue.length) {
+        newIndex = this.localQueue.length - 1;
+      }
+
+      this.localQueueIndex = newIndex;
+      const nextTrack = this.localQueue[newIndex];
+      const mediaUrl = `${this.serverUrl}/media/${nextTrack.id}`;
+
+      this.localStatus.current_track = this.mapTrackToCurrentTrack(nextTrack);
+      this.localStatus.position_seconds = 0;
+      this.localStatus.duration_seconds = nextTrack.duration_seconds;
+      this.localStatus.queue_index = newIndex;
+      this.localStatus.queue_length = this.localQueue.length;
+
+      if (this.localAudio) {
+        this.localAudio.src = mediaUrl;
+        this.localAudio.load();
+        if (wasPlaying) {
+          try {
+            this.localStatus.playing = true;
+            await this.localAudio.play();
+          } catch (err) {
+            console.error('Local remove autoplay failed:', err);
+          }
+        } else {
+          this.localStatus.playing = false;
+          this.triggerUpdate();
+        }
+      }
+    } else {
+      const playerUrl = this.playerType;
+      try {
+        const res = await fetch(`${playerUrl}/queue?index=${index}`, {
+          method: 'DELETE',
+        });
+        if (res.ok) {
+          const newStatus = await res.json();
+          const enriched = await this.enrichRemoteStatus(newStatus);
+          this.localStatus = enriched;
+          this.triggerUpdate();
+        }
+      } catch (err) {
+        console.error('Failed to remove track on remote player:', err);
+      }
+    }
+  }
+
   public destroy() {
     this.disconnectWebSocket();
     if (this.localAudio) {

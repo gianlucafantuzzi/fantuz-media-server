@@ -12,6 +12,7 @@ interface QueueScreenProps {
   onNext: () => void;
   onPrevious: () => void;
   onPlayIndex: (index: number) => void;
+  onRemoveTrack: (index: number) => void;
   serverUrl: string;
   playerUrl: string;
   activeDevice: string;
@@ -26,6 +27,7 @@ export const QueueScreen: React.FC<QueueScreenProps> = ({
   onNext,
   onPrevious,
   onPlayIndex,
+  onRemoveTrack,
   serverUrl,
   playerUrl,
   activeDevice,
@@ -302,6 +304,19 @@ export const QueueScreen: React.FC<QueueScreenProps> = ({
                     <div className="queue-item-duration">
                       {formatDuration(track.duration_seconds)}
                     </div>
+                    <button
+                      className="queue-item-remove-btn"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onRemoveTrack(i);
+                      }}
+                      aria-label="Remove track from queue"
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <line x1="18" y1="6" x2="6" y2="18" />
+                        <line x1="6" y1="6" x2="18" y2="18" />
+                      </svg>
+                    </button>
                   </div>
                 );
               })

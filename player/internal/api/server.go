@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"net/http"
+	"strconv"
 
 	"fantuz-media-server/player/internal/playback"
 	"fantuz-media-server/player/internal/queue"
@@ -19,6 +20,7 @@ type Player interface {
 	SetVolume(volume float64) error
 	Next() error
 	Previous() error
+	Remove(index int) error
 }
 
 type Server struct {
@@ -66,6 +68,22 @@ func (s *Server) handleQueue(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		s.player.SetQueue(request.Tracks, request.Replace)
+		writeJSON(w, http.StatusOK, s.player.Status())
+	case http.MethodDelete:
+		indexStr := r.URL.Query().Get("index")
+		if indexStr == "" {
+			writeErrorText(w, http.StatusBadRequest, "missing index query parameter")
+			return
+		}
+		index, err := strconv.Atoi(indexStr)
+		if err != nil || index < 0 {
+			writeErrorText(w, http.StatusBadRequest, "invalid index")
+			return
+		}
+		if err := s.player.Remove(index); err != nil {
+			writeErrorText(w, http.StatusInternalServerError, err.Error())
+			return
+		}
 		writeJSON(w, http.StatusOK, s.player.Status())
 	default:
 		methodNotAllowed(w)

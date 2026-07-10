@@ -1296,6 +1296,32 @@ h3 {
   margin-left: auto;
 }
 
+.queue-item-remove-btn {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  transition: all 150ms ease-out;
+  margin-left: 12px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.queue-panel-item:hover .queue-item-remove-btn {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.queue-item-remove-btn:hover {
+  color: var(--color-error);
+  background-color: rgba(217, 92, 92, 0.1);
+}
+
 /* Responsive adjustments */
 @media (max-width: 768px) {
   .queue-screen-main {

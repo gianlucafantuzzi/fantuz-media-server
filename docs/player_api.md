@@ -72,6 +72,15 @@ Request body:
 
 Response: current status object.
 
+### `DELETE /queue`
+
+Removes a track from the queue at a given index.
+
+Query parameters:
+- `index`: The zero-based index of the track to remove.
+
+Response: current status object.
+
 ## Playback Control
 
 ### `POST /play`

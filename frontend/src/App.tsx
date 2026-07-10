@@ -127,6 +127,9 @@ function App() {
   useEffect(() => {
     playerService.subscribe((status) => {
       setPlayerStatus(status);
+      if (!status.current_track || status.queue_length === 0) {
+        setShowQueueScreen(false);
+      }
     });
   }, []);
 
@@ -383,6 +386,7 @@ function App() {
         onNext={() => playerService.next()}
         onPrevious={() => playerService.previous()}
         onPlayIndex={(index) => playerService.playIndex(index)}
+        onRemoveTrack={(index) => playerService.removeTrack(index)}
         serverUrl={selectedServer}
         playerUrl={selectedPlayer}
         activeDevice={activeDevice}

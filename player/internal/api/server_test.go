@@ -73,6 +73,11 @@ func (m *mockPlayer) Previous() error {
 	return nil
 }
 
+func (m *mockPlayer) Remove(index int) error {
+	m.status.QueueLength--
+	return nil
+}
+
 func TestHandleQueueAndPlay(t *testing.T) {
 	player := &mockPlayer{}
 	server := New(player)
@@ -135,5 +140,21 @@ func TestCORSOptions(t *testing.T) {
 	}
 	if recorder.Header().Get("Access-Control-Allow-Origin") != "*" {
 		t.Fatal("expected CORS header")
+	}
+}
+
+func TestHandleQueueDelete(t *testing.T) {
+	player := &mockPlayer{status: playback.Status{QueueLength: 5}}
+	server := New(player)
+
+	request := httptest.NewRequest(http.MethodDelete, "/queue?index=2", nil)
+	recorder := httptest.NewRecorder()
+	server.Routes().ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", recorder.Code)
+	}
+
+	if player.status.QueueLength != 4 {
+		t.Fatalf("expected QueueLength to be 4, got %d", player.status.QueueLength)
 	}
 }

@@ -241,7 +241,11 @@ func (e *Engine) playTrack(version int, track queue.Track, startAt time.Duration
 		stream = dropSamples(stream, e.sampleRate.N(startAt))
 	}
 
-	ctrl := &beep.Ctrl{Streamer: stream, Paused: false}
+	e.mu.Lock()
+	isPaused := e.paused
+	e.mu.Unlock()
+
+	ctrl := &beep.Ctrl{Streamer: stream, Paused: isPaused}
 	e.mu.Lock()
 	if version != e.loadVersion {
 		e.mu.Unlock()
@@ -400,4 +404,82 @@ func min(a, b int) int {
 		return a
 	}
 	return b
+}
+
+func (e *Engine) Remove(index int) error {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+
+	return e.removeLocked(index)
+}
+
+func (e *Engine) removeLocked(index int) error {
+	if index < 0 || index >= e.queue.Len() {
+		return errors.New("index out of range")
+	}
+
+	activeIndex := e.queue.Index()
+	items := e.queue.Items()
+
+	// If removing a track BEFORE the active track, decrement the active index
+	if index < activeIndex {
+		items = append(items[:index], items[index+1:]...)
+		e.queue.Replace(items)
+		_ = e.queue.SetIndex(activeIndex - 1)
+		e.notifyLocked()
+		return nil
+	}
+
+	// If removing a track AFTER the active track, simply delete it
+	if index > activeIndex {
+		items = append(items[:index], items[index+1:]...)
+		e.queue.Replace(items)
+		_ = e.queue.SetIndex(activeIndex)
+		e.notifyLocked()
+		return nil
+	}
+
+	// If removing the active track:
+	wasPlaying := e.playing && !e.paused
+	e.stopPlaybackLocked()
+
+	items = append(items[:index], items[index+1:]...)
+	e.queue.Replace(items)
+
+	if len(items) == 0 {
+		e.playing = false
+		e.paused = false
+		e.position = 0
+		e.duration = 0
+		e.notifyLocked()
+		return nil
+	}
+
+	// Determine new active index
+	var newIndex int
+	if index < len(items) {
+		newIndex = index
+	} else {
+		newIndex = index - 1
+	}
+
+	_ = e.queue.SetIndex(newIndex)
+	e.position = 0
+	e.duration = 0
+
+	// Set playing state according to previous wasPlaying state
+	e.playing = true
+	e.paused = !wasPlaying
+
+	// Load and start
+	track := items[newIndex]
+	e.duration = time.Duration(track.DurationSeconds) * time.Second
+	version := e.loadVersion + 1
+	e.loadVersion = version
+	done := make(chan struct{})
+	e.streamDone = done
+	go e.playTrack(version, track, e.position, done)
+
+	e.notifyLocked()
+	return nil
 }
