@@ -19,6 +19,10 @@ func (m *mockPlayer) Status() playback.Status {
 	return m.status
 }
 
+func (m *mockPlayer) Queue() ([]queue.Track, int) {
+	return []queue.Track{}, m.status.QueueIndex
+}
+
 func (m *mockPlayer) SetQueue(tracks []queue.Track, replace bool) {
 	m.status.QueueLength = len(tracks)
 	if len(tracks) > 0 {

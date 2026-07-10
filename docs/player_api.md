@@ -30,6 +30,25 @@ Returns the current playback status.
 
 ## Queue
 
+### `GET /queue`
+
+Returns the current playback queue containing all tracks in order and the active queue index.
+
+Response:
+
+```json
+{
+  "tracks": [
+    {
+      "id": 42,
+      "url": "http://localhost:3001/media/42",
+      "duration_seconds": 240
+    }
+  ],
+  "index": 0
+}
+```
+
 ### `POST /queue`
 
 Sets or extends the playback queue.

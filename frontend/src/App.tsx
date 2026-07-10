@@ -7,6 +7,7 @@ import { AlbumView } from './views/AlbumView';
 import { TrackView } from './views/TrackView';
 import { EditMetadataView } from './views/EditMetadataView';
 import { PlayerBar } from './components/PlayerBar';
+import { QueueScreen } from './components/QueueScreen';
 import { playerService } from './services/playerService';
 import type { Track, Album, PlayerStatus } from './services/playerService';
 
@@ -75,6 +76,8 @@ function App() {
     queue_index: 0,
     queue_length: 0,
   });
+
+  const [showQueueScreen, setShowQueueScreen] = useState(false);
 
   // Fetch configuration on initialization
   useEffect(() => {
@@ -347,24 +350,44 @@ function App() {
   };
 
   return (
-    <Layout
-      activeView={activeView}
-      onViewChange={handleViewChange}
-      activeDevice={activeDevice}
-      onChangeDevice={handleDeviceChange}
-      onCastClick={handleCastClick}
-      isCastDisabled={activeDevice !== 'This device'}
-    >
-      <div style={{ paddingBottom: playerStatus.current_track ? '96px' : '0', width: '100%' }}>
-        {renderContent()}
-      </div>
-      <PlayerBar
+    <>
+      <Layout
+        activeView={activeView}
+        onViewChange={handleViewChange}
+        activeDevice={activeDevice}
+        onChangeDevice={handleDeviceChange}
+        onCastClick={handleCastClick}
+        isCastDisabled={activeDevice !== 'This device'}
+      >
+        <div style={{ paddingBottom: playerStatus.current_track ? '96px' : '0', width: '100%' }}>
+          {renderContent()}
+        </div>
+        {!showQueueScreen && (
+          <PlayerBar
+            status={playerStatus}
+            onTogglePlay={handleTogglePlay}
+            onSeek={handleSeek}
+            onVolumeChange={handleVolumeChange}
+            onNext={() => playerService.next()}
+            onPrevious={() => playerService.previous()}
+            onOpenQueue={() => setShowQueueScreen(true)}
+          />
+        )}
+      </Layout>
+      <QueueScreen
         status={playerStatus}
+        isOpen={showQueueScreen}
+        onClose={() => setShowQueueScreen(false)}
         onTogglePlay={handleTogglePlay}
         onSeek={handleSeek}
-        onVolumeChange={handleVolumeChange}
+        onNext={() => playerService.next()}
+        onPrevious={() => playerService.previous()}
+        onPlayIndex={(index) => playerService.playIndex(index)}
+        serverUrl={selectedServer}
+        playerUrl={selectedPlayer}
+        activeDevice={activeDevice}
       />
-    </Layout>
+    </>
   );
 }
 

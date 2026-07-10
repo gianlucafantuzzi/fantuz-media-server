@@ -34,6 +34,14 @@ export interface PlayerStatus {
     artist: string;
     duration_seconds: number;
     artwork_url?: string;
+    album_id?: number;
+    composer?: string;
+    date?: number;
+    disc_number?: number;
+    total_discs?: number;
+    track_number?: number;
+    total_tracks?: number;
+    keywords?: string[];
   } | null;
   queue_index: number;
   queue_length: number;
@@ -51,47 +59,70 @@ class PlayerService {
     this.serverUrl = url;
   }
 
+  private mapTrackToCurrentTrack(track: Track) {
+    const mediaUrl = `${this.serverUrl}/media/${track.id}`;
+    const artworkUrl = track.album_id ? `${this.serverUrl}/artwork/${track.album_id}` : undefined;
+    return {
+      id: track.id,
+      url: mediaUrl,
+      title: track.title,
+      artist: track.artist,
+      duration_seconds: track.duration_seconds,
+      artwork_url: artworkUrl,
+      album_id: track.album_id,
+      composer: track.composer,
+      date: track.date,
+      disc_number: track.disc_number,
+      total_discs: track.total_discs,
+      track_number: track.track_number,
+      total_tracks: track.total_tracks,
+      keywords: track.keywords,
+    };
+  }
+
   private async enrichRemoteStatus(remoteStatus: any): Promise<PlayerStatus> {
     if (!remoteStatus.current_track || !remoteStatus.current_track.id || !this.serverUrl) {
       return remoteStatus;
     }
     const trackId = remoteStatus.current_track.id;
-    if (this.trackCache[trackId]) {
-      const track = this.trackCache[trackId];
+    let track = this.trackCache[trackId];
+    if (!track) {
+      try {
+        const response = await fetch(`${this.serverUrl}/api/library/tracks/batch`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ids: [trackId] }),
+        });
+        if (response.ok) {
+          const tracks = await response.json();
+          if (tracks && tracks.length > 0) {
+            track = tracks[0];
+            this.trackCache[trackId] = track;
+          }
+        }
+      } catch (err) {
+        console.error('Error enriching remote status:', err);
+      }
+    }
+
+    if (track) {
       return {
         ...remoteStatus,
         current_track: {
           ...remoteStatus.current_track,
           title: track.title,
           artist: track.artist,
+          album_id: track.album_id,
+          composer: track.composer,
+          date: track.date,
+          disc_number: track.disc_number,
+          total_discs: track.total_discs,
+          track_number: track.track_number,
+          total_tracks: track.total_tracks,
+          keywords: track.keywords,
           artwork_url: track.album_id ? `${this.serverUrl}/artwork/${track.album_id}` : undefined,
         },
       };
-    }
-    try {
-      const response = await fetch(`${this.serverUrl}/api/library/tracks/batch`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ids: [trackId] }),
-      });
-      if (response.ok) {
-        const tracks = await response.json();
-        if (tracks && tracks.length > 0) {
-          const track = tracks[0];
-          this.trackCache[trackId] = track;
-          return {
-            ...remoteStatus,
-            current_track: {
-              ...remoteStatus.current_track,
-              title: track.title,
-              artist: track.artist,
-              artwork_url: track.album_id ? `${this.serverUrl}/artwork/${track.album_id}` : undefined,
-            },
-          };
-        }
-      }
-    } catch (err) {
-      console.error('Error enriching remote status:', err);
     }
     return remoteStatus;
   }
@@ -160,15 +191,8 @@ class PlayerService {
         this.localQueueIndex++;
         const nextTrack = this.localQueue[this.localQueueIndex];
         const mediaUrl = `${this.serverUrl}/media/${nextTrack.id}`;
-        const artworkUrl = `${this.serverUrl}/artwork/${nextTrack.album_id}`;
 
-        this.localStatus.current_track = {
-          url: mediaUrl,
-          title: nextTrack.title,
-          artist: nextTrack.artist,
-          duration_seconds: nextTrack.duration_seconds,
-          artwork_url: artworkUrl,
-        };
+        this.localStatus.current_track = this.mapTrackToCurrentTrack(nextTrack);
         this.localStatus.queue_index = this.localQueueIndex;
         if (this.localAudio) {
           this.localAudio.src = mediaUrl;
@@ -285,7 +309,6 @@ class PlayerService {
     this.serverUrl = serverUrl;
     const startTrack = tracks[startIndex];
     const mediaUrl = `${serverUrl}/media/${startTrack.id}`;
-    const artworkUrl = `${serverUrl}/artwork/${startTrack.album_id}`;
 
     if (this.playerType === 'Browser') {
       if (this.localAudio) {
@@ -296,13 +319,7 @@ class PlayerService {
         this.localQueue = [...tracks];
         this.localQueueIndex = startIndex;
 
-        this.localStatus.current_track = {
-          url: mediaUrl,
-          title: startTrack.title,
-          artist: startTrack.artist,
-          duration_seconds: startTrack.duration_seconds,
-          artwork_url: artworkUrl,
-        };
+        this.localStatus.current_track = this.mapTrackToCurrentTrack(startTrack);
         this.localStatus.position_seconds = 0;
         this.localStatus.duration_seconds = startTrack.duration_seconds;
         this.localStatus.queue_index = startIndex;
@@ -366,15 +383,8 @@ class PlayerService {
         this.localQueueIndex = 0;
         const firstTrack = this.localQueue[0];
         const mediaUrl = `${serverUrl}/media/${firstTrack.id}`;
-        const artworkUrl = `${serverUrl}/artwork/${firstTrack.album_id}`;
 
-        this.localStatus.current_track = {
-          url: mediaUrl,
-          title: firstTrack.title,
-          artist: firstTrack.artist,
-          duration_seconds: firstTrack.duration_seconds,
-          artwork_url: artworkUrl,
-        };
+        this.localStatus.current_track = this.mapTrackToCurrentTrack(firstTrack);
         this.localStatus.position_seconds = 0;
         this.localStatus.duration_seconds = firstTrack.duration_seconds;
         this.localStatus.queue_index = 0;
@@ -489,6 +499,100 @@ class PlayerService {
         });
       } else {
         console.warn('Casting is not supported in this browser.');
+      }
+    }
+  }
+
+  public async next() {
+    if (this.playerType === 'Browser') {
+      if (this.localQueueIndex + 1 < this.localQueue.length) {
+        this.localQueueIndex++;
+        const nextTrack = this.localQueue[this.localQueueIndex];
+        const mediaUrl = `${this.serverUrl}/media/${nextTrack.id}`;
+        this.localStatus.current_track = this.mapTrackToCurrentTrack(nextTrack);
+        this.localStatus.position_seconds = 0;
+        this.localStatus.duration_seconds = nextTrack.duration_seconds;
+        this.localStatus.queue_index = this.localQueueIndex;
+        if (this.localAudio) {
+          this.localAudio.src = mediaUrl;
+          this.localAudio.load();
+          try {
+            await this.localAudio.play();
+          } catch (err) {
+            console.error('Local next track autoplay failed:', err);
+          }
+        }
+      }
+    } else {
+      const playerUrl = this.playerType;
+      try {
+        await fetch(`${playerUrl}/next`, { method: 'POST' });
+      } catch (err) {
+        console.error('Failed to skip next on remote player:', err);
+      }
+    }
+  }
+
+  public async previous() {
+    if (this.playerType === 'Browser') {
+      if (this.localQueueIndex > 0) {
+        this.localQueueIndex--;
+        const prevTrack = this.localQueue[this.localQueueIndex];
+        const mediaUrl = `${this.serverUrl}/media/${prevTrack.id}`;
+        this.localStatus.current_track = this.mapTrackToCurrentTrack(prevTrack);
+        this.localStatus.position_seconds = 0;
+        this.localStatus.duration_seconds = prevTrack.duration_seconds;
+        this.localStatus.queue_index = this.localQueueIndex;
+        if (this.localAudio) {
+          this.localAudio.src = mediaUrl;
+          this.localAudio.load();
+          try {
+            await this.localAudio.play();
+          } catch (err) {
+            console.error('Local previous track autoplay failed:', err);
+          }
+        }
+      }
+    } else {
+      const playerUrl = this.playerType;
+      try {
+        await fetch(`${playerUrl}/previous`, { method: 'POST' });
+      } catch (err) {
+        console.error('Failed to skip previous on remote player:', err);
+      }
+    }
+  }
+
+  public async playIndex(index: number) {
+    if (this.playerType === 'Browser') {
+      if (index >= 0 && index < this.localQueue.length) {
+        this.localQueueIndex = index;
+        const track = this.localQueue[this.localQueueIndex];
+        const mediaUrl = `${this.serverUrl}/media/${track.id}`;
+        this.localStatus.current_track = this.mapTrackToCurrentTrack(track);
+        this.localStatus.position_seconds = 0;
+        this.localStatus.duration_seconds = track.duration_seconds;
+        this.localStatus.queue_index = this.localQueueIndex;
+        if (this.localAudio) {
+          this.localAudio.src = mediaUrl;
+          this.localAudio.load();
+          try {
+            await this.localAudio.play();
+          } catch (err) {
+            console.error('Local index autoplay failed:', err);
+          }
+        }
+      }
+    } else {
+      const playerUrl = this.playerType;
+      try {
+        await fetch(`${playerUrl}/play`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ index }),
+        });
+      } catch (err) {
+        console.error('Failed to play index on remote player:', err);
       }
     }
   }

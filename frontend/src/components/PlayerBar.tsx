@@ -7,6 +7,9 @@ interface PlayerBarProps {
   onTogglePlay: () => void;
   onSeek: (seconds: number) => void;
   onVolumeChange: (volume: number) => void;
+  onNext: () => void;
+  onPrevious: () => void;
+  onOpenQueue: () => void;
 }
 
 export const PlayerBar: React.FC<PlayerBarProps> = ({
@@ -14,6 +17,9 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
   onTogglePlay,
   onSeek,
   onVolumeChange,
+  onNext,
+  onPrevious,
+  onOpenQueue,
 }) => {
   const { current_track, playing, position_seconds, duration_seconds, volume } = status;
 
@@ -33,6 +39,13 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
 
   return (
     <div className="player-bar">
+      {/* Pull Tab Handle */}
+      <button className="player-bar-pull-tab" onClick={onOpenQueue} aria-label="Open Queue Screen">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+          <polyline points="18 15 12 9 6 15" />
+        </svg>
+      </button>
+
       {/* Track Info (Left) */}
       <div className="player-track-info">
         <div className="player-artwork-wrapper">
@@ -77,8 +90,8 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
       {/* Playback Controls & Scrubber (Center) */}
       <div className="player-controls-container">
         <div className="player-buttons">
-          {/* Previous Track Placeholder Button */}
-          <button className="player-btn" aria-label="Previous Track">
+          {/* Previous Track Button */}
+          <button className="player-btn" onClick={onPrevious} aria-label="Previous Track">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <polygon points="19 20 9 12 19 4 19 20" />
               <line x1="5" y1="19" x2="5" y2="5" />
@@ -103,8 +116,8 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
             )}
           </button>
 
-          {/* Next Track Placeholder Button */}
-          <button className="player-btn" aria-label="Next Track">
+          {/* Next Track Button */}
+          <button className="player-btn" onClick={onNext} aria-label="Next Track">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <polygon points="5 4 15 12 5 20 5 4" />
               <line x1="19" y1="5" x2="19" y2="19" />

@@ -71,6 +71,12 @@ func (e *Engine) Status() Status {
 	return e.statusLocked()
 }
 
+func (e *Engine) Queue() ([]queue.Track, int) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return e.queue.Items(), e.queue.Index()
+}
+
 func (e *Engine) SetQueue(tracks []queue.Track, replace bool) {
 	e.mu.Lock()
 	defer e.mu.Unlock()

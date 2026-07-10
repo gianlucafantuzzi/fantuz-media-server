@@ -247,6 +247,35 @@ The "Track" screen is used to provide all information about a track and play it 
     * When "Remote player" is configured in the top bar, the "Player bar" is kept in sync with the current status of the configured player. The "Player bar" is only made visible when the configured player has items in its queue.
     * When "This device" is configured, the player's functionality is replicated in the browser and the playback queue is maintained inside the browser similarly to what would happen with a remote player application.
 
+* When the "Player Bar" has a slide element (similar to a paper being extracted from a file) that causes the "Queue Screen" to slide open.
+
+#### Queue Screen
+
+* The "Queue Screen" is brought up with an animation from the "Player Bar". Once the "Queue Screen" is fully displayed, the "Player Bar" disappears.
+
+* The "Queue Screen" covers the whole screen. While it is up, it is not possible to access any of the standard buttons like "Home" or "Settings".
+
+* The "Queue Screen" has an element at the top that causes it to slide down and disappear. Once it is disappeared, the "Player Bar" is displayed again.
+
+* The "Queue Screen" displays:
+    * To the left a big image of the artwork
+    * On the right of the artwork, all the metadata of the track (only when available):
+        * Title
+        * Artist
+        * Album
+        * Album artist - Only when different from Artist
+        * Composer
+        * Year
+        * Duration
+        * Disc number / Total discs (only if all the information is available and there is not just one disk)
+        * Track number / Total tracks (only if all the information is available and there is not just one disk)
+        * Keyword boxes
+    * Below the artwork and metadata, the same transport controls available in the "Player Bar"
+    * Below the transport controls, the same progress bar that is displayed in the "Player Bar"
+
+* On the right of the "Queue Screen", there is an item indicating a hidden panel. By clicking on it, the "Queue Panel" is slide open from the right. The panel contains a vertical (potentially scrollable) list of all the tracks currently in the queue (obtained from the player). Each lines contains a small workart, the title of the track, the artist and the duration. The track that is currently playing (or paused on) is highlighted. 
+
+
 #### Edit Metadata Screen
 
 The "Edit metadata" screen has the purpose to browse the library on the server and change some of the ID3 tags. This causes changes to both the audio files and the DB. After changes have been made to the files, the library scan server API is invoked to update the DB.

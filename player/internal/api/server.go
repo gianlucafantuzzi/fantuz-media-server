@@ -10,6 +10,7 @@ import (
 
 type Player interface {
 	Status() playback.Status
+	Queue() (tracks []queue.Track, index int)
 	SetQueue(tracks []queue.Track, replace bool)
 	Play() error
 	PlayIndex(index int) error
@@ -49,19 +50,26 @@ func (s *Server) BroadcastStatus(status playback.Status) {
 }
 
 func (s *Server) handleQueue(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
+	switch r.Method {
+	case http.MethodGet:
+		tracks, index := s.player.Queue()
+		writeJSON(w, http.StatusOK, map[string]any{
+			"tracks": tracks,
+			"index":  index,
+		})
+	case http.MethodPost:
+		var request struct {
+			Tracks  []queue.Track `json:"tracks"`
+			Replace bool          `json:"replace"`
+		}
+		if !decodeJSON(w, r, &request) {
+			return
+		}
+		s.player.SetQueue(request.Tracks, request.Replace)
+		writeJSON(w, http.StatusOK, s.player.Status())
+	default:
 		methodNotAllowed(w)
-		return
 	}
-	var request struct {
-		Tracks  []queue.Track `json:"tracks"`
-		Replace bool          `json:"replace"`
-	}
-	if !decodeJSON(w, r, &request) {
-		return
-	}
-	s.player.SetQueue(request.Tracks, request.Replace)
-	writeJSON(w, http.StatusOK, s.player.Status())
 }
 
 func (s *Server) handlePlay(w http.ResponseWriter, r *http.Request) {
