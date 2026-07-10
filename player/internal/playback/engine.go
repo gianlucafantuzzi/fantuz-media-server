@@ -2,15 +2,13 @@ package playback
 
 import (
 	"errors"
-	"net/http"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
-	"github.com/gopxl/beep"
-	"github.com/gopxl/beep/effects"
-	"github.com/gopxl/beep/speaker"
-
 	"fantuz-media-server/player/internal/queue"
+	"github.com/fhs/gompd/v2/mpd"
 )
 
 var (
@@ -35,33 +33,34 @@ type Status struct {
 }
 
 type Engine struct {
-	mu          sync.Mutex
-	queue       *queue.Queue
-	volume      float64
-	playing     bool
-	paused      bool
-	position    time.Duration
-	duration    time.Duration
-	sampleRate  beep.SampleRate
-	httpClient  *http.Client
-	onChange    func(Status)
-	streamDone  chan struct{}
-	loadVersion int
-	activeCtrl  *beep.Ctrl
+	mu              sync.Mutex
+	mpdAddr         string
+	client          *mpd.Client
+	queueTracks     []queue.Track
+	onChange        func(Status)
+	playing         bool
+	positionSeconds float64
+	durationSeconds int
+	volume          float64
+	queueIndex      int
+	closeChan       chan struct{}
 }
 
 func New(onChange func(Status)) *Engine {
-	return &Engine{
-		queue:      queue.New(nil, 0),
-		volume:     1,
-		sampleRate: beep.SampleRate(44100),
-		httpClient: &http.Client{Timeout: 0},
-		onChange:   onChange,
+	e := &Engine{
+		mpdAddr:     "localhost:6600",
+		queueTracks: []queue.Track{},
+		onChange:    onChange,
+		closeChan:   make(chan struct{}),
 	}
+	go e.connectionAndIdleLoop()
+	go e.positionTickerLoop()
+	return e
 }
 
 func (e *Engine) InitSpeaker() error {
-	return speaker.Init(e.sampleRate, e.sampleRate.N(time.Second/10))
+	// MPD owns the speaker output, so this is a no-op
+	return nil
 }
 
 func (e *Engine) SetOnChange(onChange func(Status)) {
@@ -70,416 +69,364 @@ func (e *Engine) SetOnChange(onChange func(Status)) {
 	e.onChange = onChange
 }
 
+func (e *Engine) connectionAndIdleLoop() {
+	for {
+		select {
+		case <-e.closeChan:
+			return
+		default:
+		}
+
+		client, err := mpd.Dial("tcp", e.mpdAddr)
+		if err != nil {
+			time.Sleep(2 * time.Second)
+			continue
+		}
+
+		e.mu.Lock()
+		e.client = client
+		e.mu.Unlock()
+
+		e.updateAndNotify()
+
+		// Monitor subsystem updates reactively via MPD idle watcher
+		watcher, err := mpd.NewWatcher("tcp", e.mpdAddr, "", "player", "playlist", "mixer", "options")
+		if err == nil {
+			watcherLoop:
+			for {
+				select {
+				case <-e.closeChan:
+					watcher.Close()
+					break watcherLoop
+				case err, ok := <-watcher.Error:
+					if !ok || err != nil {
+						break watcherLoop
+					}
+				case _, ok := <-watcher.Event:
+					if !ok {
+						break watcherLoop
+					}
+					e.updateAndNotify()
+				}
+			}
+			watcher.Close()
+		}
+
+		e.mu.Lock()
+		if e.client != nil {
+			_ = e.client.Close()
+			e.client = nil
+		}
+		e.mu.Unlock()
+
+		time.Sleep(1 * time.Second)
+	}
+}
+
+func (e *Engine) positionTickerLoop() {
+	ticker := time.NewTicker(250 * time.Millisecond)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-e.closeChan:
+			return
+		case <-ticker.C:
+			e.mu.Lock()
+			if e.playing {
+				e.positionSeconds += 0.25
+				if e.durationSeconds > 0 && e.positionSeconds > float64(e.durationSeconds) {
+					e.positionSeconds = float64(e.durationSeconds)
+				}
+				e.notifyLocked()
+			}
+			e.mu.Unlock()
+		}
+	}
+}
+
+func (e *Engine) updateAndNotify() {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+
+	if e.client == nil {
+		return
+	}
+
+	attrs, err := e.client.Status()
+	if err != nil {
+		return
+	}
+
+	e.playing = attrs["state"] == "play"
+
+	if volStr, ok := attrs["volume"]; ok {
+		if volInt, err := strconv.Atoi(volStr); err == nil {
+			if volInt < 0 {
+				e.volume = 0
+			} else {
+				e.volume = float64(volInt) / 100.0
+			}
+		}
+	}
+
+	if elapsedStr, ok := attrs["elapsed"]; ok {
+		if elapsed, err := strconv.ParseFloat(elapsedStr, 64); err == nil {
+			e.positionSeconds = elapsed
+		}
+	} else if timeStr, ok := attrs["time"]; ok {
+		parts := strings.Split(timeStr, ":")
+		if len(parts) > 0 {
+			if elapsed, err := strconv.ParseFloat(parts[0], 64); err == nil {
+				e.positionSeconds = elapsed
+			}
+		}
+	}
+
+
+	duration := 0
+	if durationStr, ok := attrs["duration"]; ok {
+		if durFloat, err := strconv.ParseFloat(durationStr, 64); err == nil {
+			duration = int(durFloat)
+		}
+	}
+	e.durationSeconds = duration
+
+	songIndex := -1
+	if songStr, ok := attrs["song"]; ok {
+		if idx, err := strconv.Atoi(songStr); err == nil {
+			songIndex = idx
+		}
+	}
+	e.queueIndex = songIndex
+
+	e.notifyLocked()
+}
+
+func (e *Engine) notifyLocked() {
+	if e.onChange == nil {
+		return
+	}
+
+	var current *StatusTrack
+	if e.queueIndex >= 0 && e.queueIndex < len(e.queueTracks) {
+		track := e.queueTracks[e.queueIndex]
+		current = &StatusTrack{
+			ID:  track.ID,
+			URL: track.URL,
+		}
+		if track.DurationSeconds > 0 && e.durationSeconds <= 0 {
+			e.durationSeconds = track.DurationSeconds
+		}
+	}
+
+	status := Status{
+		Playing:         e.playing,
+		PositionSeconds: e.positionSeconds,
+		DurationSeconds: e.durationSeconds,
+		Volume:          e.volume,
+		CurrentTrack:    current,
+		QueueIndex:      e.queueIndex,
+		QueueLength:     len(e.queueTracks),
+	}
+
+	go e.onChange(status)
+}
+
 func (e *Engine) Status() Status {
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	return e.statusLocked()
+
+	var current *StatusTrack
+	if e.queueIndex >= 0 && e.queueIndex < len(e.queueTracks) {
+		track := e.queueTracks[e.queueIndex]
+		current = &StatusTrack{
+			ID:  track.ID,
+			URL: track.URL,
+		}
+	}
+
+	return Status{
+		Playing:         e.playing,
+		PositionSeconds: e.positionSeconds,
+		DurationSeconds: e.durationSeconds,
+		Volume:          e.volume,
+		CurrentTrack:    current,
+		QueueIndex:      e.queueIndex,
+		QueueLength:     len(e.queueTracks),
+	}
 }
 
 func (e *Engine) Queue() ([]queue.Track, int) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	return e.queue.Items(), e.queue.Index()
+	return e.queueTracks, e.queueIndex
 }
 
 func (e *Engine) SetQueue(tracks []queue.Track, replace bool) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	if replace {
-		e.queue.Replace(tracks)
-		e.position = 0
-		e.duration = trackDuration(e.queue)
-		e.stopPlaybackLocked()
-	} else {
-		e.queue.Append(tracks)
-		if !e.playing && !e.paused {
-			e.position = 0
-		}
-		e.duration = trackDuration(e.queue)
+
+	if e.client == nil {
+		return
 	}
+
+	if replace {
+		_ = e.client.Clear()
+		e.queueTracks = []queue.Track{}
+		e.queueIndex = -1
+		e.positionSeconds = 0
+		e.durationSeconds = 0
+	}
+
+	for _, track := range tracks {
+		_ = e.client.Add(track.URL)
+		e.queueTracks = append(e.queueTracks, track)
+	}
+
 	e.notifyLocked()
 }
 
 func (e *Engine) Play() error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	if e.queue.Len() == 0 {
+
+	if e.client == nil {
+		return errors.New("mpd not connected")
+	}
+
+	if len(e.queueTracks) == 0 {
 		return ErrNoTrack
 	}
-	if e.activeCtrl != nil && e.paused {
-		e.paused = false
-		e.playing = true
-		e.activeCtrl.Paused = false
-		e.notifyLocked()
-		return nil
-	}
-	if e.playing && !e.paused {
-		return nil
-	}
-	e.position = 0
-	return e.startCurrentLocked()
+
+	return e.client.Play(-1)
 }
 
 func (e *Engine) PlayIndex(index int) error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	if err := e.queue.SetIndex(index); err != nil {
-		return err
+
+	if e.client == nil {
+		return errors.New("mpd not connected")
 	}
-	e.position = 0
-	return e.startCurrentLocked()
+
+	if index < 0 || index >= len(e.queueTracks) {
+		return errors.New("index out of range")
+	}
+
+	return e.client.Play(index)
 }
 
 func (e *Engine) Pause() error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	if !e.playing && !e.paused {
-		return nil
+
+	if e.client == nil {
+		return errors.New("mpd not connected")
 	}
-	e.paused = true
-	e.playing = false
-	if e.activeCtrl != nil {
-		e.activeCtrl.Paused = true
-	}
-	e.notifyLocked()
-	return nil
+
+	return e.client.Pause(true)
 }
 
 func (e *Engine) Seek(seconds float64) error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
+
+	if e.client == nil {
+		return errors.New("mpd not connected")
+	}
+
+	if len(e.queueTracks) == 0 {
+		return ErrNoTrack
+	}
+
 	if seconds < 0 {
 		return ErrInvalidSeek
 	}
-	track, err := e.queue.Current()
-	if err != nil {
-		return err
+
+	if e.queueIndex >= 0 && e.queueIndex < len(e.queueTracks) {
+		track := e.queueTracks[e.queueIndex]
+		if track.DurationSeconds > 0 && seconds > float64(track.DurationSeconds) {
+			return ErrInvalidSeek
+		}
 	}
-	if track.DurationSeconds > 0 && seconds > float64(track.DurationSeconds) {
-		return ErrInvalidSeek
+
+	err := e.client.SeekCur(time.Duration(seconds*float64(time.Second)), false)
+	if err == nil {
+		e.positionSeconds = seconds
+		e.notifyLocked()
 	}
-	e.position = time.Duration(seconds * float64(time.Second))
-	return e.startCurrentLocked()
+	return err
 }
 
 func (e *Engine) SetVolume(volume float64) error {
 	if volume < 0 || volume > 1 {
 		return ErrInvalidVolume
 	}
+
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	e.volume = volume
-	if e.playing || e.paused {
-		return e.startCurrentLocked()
+
+	if e.client == nil {
+		return errors.New("mpd not connected")
 	}
-	e.notifyLocked()
-	return nil
+
+	err := e.client.SetVolume(int(volume * 100))
+	if err == nil {
+		e.volume = volume
+		e.notifyLocked()
+	}
+	return err
 }
 
 func (e *Engine) Next() error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	if _, err := e.queue.Next(); err != nil {
-		return err
+
+	if e.client == nil {
+		return errors.New("mpd not connected")
 	}
-	e.position = 0
-	return e.startCurrentLocked()
+
+	return e.client.Next()
 }
 
 func (e *Engine) Previous() error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	if _, err := e.queue.Previous(); err != nil {
-		return err
-	}
-	e.position = 0
-	return e.startCurrentLocked()
-}
 
-func (e *Engine) startCurrentLocked() error {
-	track, err := e.queue.Current()
-	if err != nil {
-		return err
-	}
-	e.stopPlaybackLocked()
-	e.playing = true
-	e.paused = false
-	e.duration = time.Duration(track.DurationSeconds) * time.Second
-	version := e.loadVersion + 1
-	e.loadVersion = version
-	done := make(chan struct{})
-	e.streamDone = done
-	go e.playTrack(version, track, e.position, done)
-	e.notifyLocked()
-	return nil
-}
-
-func (e *Engine) stopPlaybackLocked() {
-	if e.streamDone != nil {
-		close(e.streamDone)
-		e.streamDone = nil
-	}
-	e.activeCtrl = nil
-	speaker.Clear()
-	e.playing = false
-}
-
-func (e *Engine) playTrack(version int, track queue.Track, startAt time.Duration, done chan struct{}) {
-	seekCloser, format, err := e.openTrack(track.URL)
-	if err != nil {
-		e.finishTrack(version, false)
-		return
-	}
-	defer seekCloser.Close()
-
-	var stream beep.Streamer = seekCloser
-	if format.SampleRate != e.sampleRate {
-		stream = beep.Resample(4, format.SampleRate, e.sampleRate, seekCloser)
+	if e.client == nil {
+		return errors.New("mpd not connected")
 	}
 
-	if startAt > 0 {
-		stream = dropSamples(stream, e.sampleRate.N(startAt))
-	}
-
-	e.mu.Lock()
-	isPaused := e.paused
-	e.mu.Unlock()
-
-	ctrl := &beep.Ctrl{Streamer: stream, Paused: isPaused}
-	e.mu.Lock()
-	if version != e.loadVersion {
-		e.mu.Unlock()
-		return
-	}
-	e.activeCtrl = ctrl
-	e.mu.Unlock()
-
-	volumeStreamer := &effects.Volume{
-		Streamer: ctrl,
-		Base:     2,
-		Volume:   volumeToBeep(e.volume),
-		Silent:   e.volume == 0,
-	}
-
-	position := startAt
-	ticker := time.NewTicker(time.Second)
-	defer ticker.Stop()
-
-	speaker.Play(beep.Seq(volumeStreamer, beep.Callback(func() {
-		e.finishTrack(version, true)
-	})))
-
-	for {
-		select {
-		case <-done:
-			return
-		case <-ticker.C:
-			e.mu.Lock()
-			if version != e.loadVersion {
-				e.mu.Unlock()
-				return
-			}
-			if !e.paused {
-				position += time.Second
-				e.position = position
-			}
-			e.notifyLocked()
-			e.mu.Unlock()
-		}
-	}
-}
-
-func (e *Engine) finishTrack(version int, advance bool) {
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	if version != e.loadVersion {
-		return
-	}
-	e.activeCtrl = nil
-	e.playing = false
-	e.paused = false
-	e.position = 0
-	if advance {
-		if _, err := e.queue.Next(); err == nil {
-			_ = e.startCurrentLocked()
-			return
-		}
-	}
-	e.notifyLocked()
-}
-
-func (e *Engine) openTrack(url string) (beep.StreamSeekCloser, beep.Format, error) {
-	response, err := e.httpClient.Get(url)
-	if err != nil {
-		return nil, beep.Format{}, err
-	}
-	if response.StatusCode != http.StatusOK {
-		response.Body.Close()
-		return nil, beep.Format{}, errors.New("failed to open track URL")
-	}
-	return decodeStream(url, response.Header.Get("Content-Type"), response.Body)
-}
-
-func (e *Engine) statusLocked() Status {
-	track, err := e.queue.Current()
-	var current *StatusTrack
-	durationSeconds := int(e.duration / time.Second)
-	if err == nil {
-		current = &StatusTrack{
-			ID:  track.ID,
-			URL: track.URL,
-		}
-		if track.DurationSeconds > 0 {
-			durationSeconds = track.DurationSeconds
-		}
-	}
-	return Status{
-		Playing:         e.playing && !e.paused,
-		PositionSeconds: e.position.Seconds(),
-		DurationSeconds: durationSeconds,
-		Volume:          e.volume,
-		CurrentTrack:    current,
-		QueueIndex:      e.queue.Index(),
-		QueueLength:     e.queue.Len(),
-	}
-}
-
-
-func (e *Engine) notifyLocked() {
-	if e.onChange == nil {
-		return
-	}
-	status := e.statusLocked()
-	go e.onChange(status)
-}
-
-func trackDuration(q *queue.Queue) time.Duration {
-	track, err := q.Current()
-	if err != nil || track.DurationSeconds <= 0 {
-		return 0
-	}
-	return time.Duration(track.DurationSeconds) * time.Second
-}
-
-func volumeToBeep(volume float64) float64 {
-	if volume <= 0 {
-		return -5
-	}
-	if volume >= 1 {
-		return 0
-	}
-	return -5 + volume*5
-}
-
-type sampleDropper struct {
-	streamer  beep.Streamer
-	remaining int
-}
-
-func dropSamples(streamer beep.Streamer, count int) beep.Streamer {
-	if count <= 0 {
-		return streamer
-	}
-	return &sampleDropper{streamer: streamer, remaining: count}
-}
-
-func (d *sampleDropper) Stream(samples [][2]float64) (int, bool) {
-	for d.remaining > 0 {
-		discard := make([][2]float64, min(d.remaining, 512))
-		n, ok := d.streamer.Stream(discard)
-		if n == 0 {
-			return 0, ok
-		}
-		d.remaining -= n
-	}
-	return d.streamer.Stream(samples)
-}
-
-func (d *sampleDropper) Err() error {
-	return d.streamer.Err()
-}
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
+	return e.client.Previous()
 }
 
 func (e *Engine) Remove(index int) error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
-	return e.removeLocked(index)
-}
+	if e.client == nil {
+		return errors.New("mpd not connected")
+	}
 
-func (e *Engine) removeLocked(index int) error {
-	if index < 0 || index >= e.queue.Len() {
+	if index < 0 || index >= len(e.queueTracks) {
 		return errors.New("index out of range")
 	}
 
-	activeIndex := e.queue.Index()
-	items := e.queue.Items()
-
-	// If removing a track BEFORE the active track, decrement the active index
-	if index < activeIndex {
-		items = append(items[:index], items[index+1:]...)
-		e.queue.Replace(items)
-		_ = e.queue.SetIndex(activeIndex - 1)
+	err := e.client.Delete(index, -1)
+	if err == nil {
+		e.queueTracks = append(e.queueTracks[:index], e.queueTracks[index+1:]...)
 		e.notifyLocked()
-		return nil
 	}
+	return err
+}
 
-	// If removing a track AFTER the active track, simply delete it
-	if index > activeIndex {
-		items = append(items[:index], items[index+1:]...)
-		e.queue.Replace(items)
-		_ = e.queue.SetIndex(activeIndex)
-		e.notifyLocked()
-		return nil
+func (e *Engine) Close() {
+	close(e.closeChan)
+	e.mu.Lock()
+	if e.client != nil {
+		_ = e.client.Close()
+		e.client = nil
 	}
-
-	// If removing the active track:
-	wasPlaying := e.playing && !e.paused
-	e.stopPlaybackLocked()
-
-	items = append(items[:index], items[index+1:]...)
-	e.queue.Replace(items)
-
-	if len(items) == 0 {
-		e.playing = false
-		e.paused = false
-		e.position = 0
-		e.duration = 0
-		e.notifyLocked()
-		return nil
-	}
-
-	// Determine new active index
-	var newIndex int
-	if index < len(items) {
-		newIndex = index
-	} else {
-		newIndex = index - 1
-	}
-
-	_ = e.queue.SetIndex(newIndex)
-	e.position = 0
-	e.duration = 0
-
-	// Set playing state according to previous wasPlaying state
-	e.playing = true
-	e.paused = !wasPlaying
-
-	// Load and start
-	track := items[newIndex]
-	e.duration = time.Duration(track.DurationSeconds) * time.Second
-	version := e.loadVersion + 1
-	e.loadVersion = version
-	done := make(chan struct{})
-	e.streamDone = done
-	go e.playTrack(version, track, e.position, done)
-
-	e.notifyLocked()
-	return nil
+	e.mu.Unlock()
 }
