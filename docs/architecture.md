@@ -97,6 +97,7 @@ Playlists are stored in the database and managed via the server API. Each playli
 * Compiled into static files
 * Looks good whether it is on a tablet, mobile phone or computer
 * Handles well both vertical and horizontal orientations
+* When playing the content from the browser, the Web Audio API shall be used, in order to achieve gapless playback
 * For casting to Bluetooth and Airplay, rely on the browser's native capabilities
 
 ### Requirements

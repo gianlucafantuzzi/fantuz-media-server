@@ -129,7 +129,16 @@ class PlayerService {
   }
 
   // Local Browser Player Queue & State
-  private localAudio: HTMLAudioElement | null = null;
+  private audioCtx: AudioContext | null = null;
+  private gainNode: GainNode | null = null;
+  private activeSource: AudioBufferSourceNode | null = null;
+  private nextSource: AudioBufferSourceNode | null = null;
+  private activeBuffer: AudioBuffer | null = null;
+  private nextBuffer: AudioBuffer | null = null;
+  private playbackStartTime: number = 0;
+  private trackOffset: number = 0;
+  private positionInterval: any = null;
+
   private localQueue: Track[] = [];
   private localQueueIndex: number = 0;
   private localStatus: PlayerStatus = {
@@ -146,69 +155,171 @@ class PlayerService {
   private ws: WebSocket | null = null;
 
   constructor() {
-    if (typeof window !== 'undefined') {
-      this.initLocalAudio();
+    // Web Audio API Context is initialized on first user interaction
+  }
+
+  private initAudioContext() {
+    if (!this.audioCtx && typeof window !== 'undefined') {
+      const AudioCtxClass = window.AudioContext || (window as any).webkitAudioContext;
+      this.audioCtx = new AudioCtxClass();
+      this.gainNode = this.audioCtx.createGain();
+      this.gainNode.gain.value = this.localStatus.volume;
+      this.gainNode.connect(this.audioCtx.destination);
+    }
+    if (this.audioCtx && this.audioCtx.state === 'suspended') {
+      this.audioCtx.resume();
     }
   }
 
-  private initLocalAudio() {
-    this.localAudio = new Audio();
-    this.localAudio.volume = this.localStatus.volume;
+  private async fetchAndDecodeTrack(track: Track): Promise<AudioBuffer | null> {
+    if (!this.audioCtx || !this.serverUrl) return null;
+    const url = `${this.serverUrl}/media/${track.id}`;
+    try {
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`HTTP error ${res.status}`);
+      const arrayBuf = await res.arrayBuffer();
+      return await this.audioCtx.decodeAudioData(arrayBuf);
+    } catch (e) {
+      console.error(`Failed to fetch/decode track ${track.id}:`, e);
+      return null;
+    }
+  }
 
-    this.localAudio.addEventListener('play', () => {
-      this.localStatus.playing = true;
-      this.triggerUpdate();
-    });
+  private stopLocalPlayback() {
+    if (this.activeSource) {
+      try {
+        this.activeSource.stop();
+      } catch (e) {}
+      this.activeSource.onended = null;
+      this.activeSource = null;
+    }
+    if (this.nextSource) {
+      try {
+        this.nextSource.stop();
+      } catch (e) {}
+      this.nextSource.onended = null;
+      this.nextSource = null;
+    }
+    this.activeBuffer = null;
+    this.nextBuffer = null;
+    if (this.positionInterval) {
+      clearInterval(this.positionInterval);
+      this.positionInterval = null;
+    }
+  }
 
-    this.localAudio.addEventListener('pause', () => {
+  private async startLocalPlayback(offset: number = 0) {
+    this.stopLocalPlayback();
+    this.initAudioContext();
+    if (!this.audioCtx || !this.gainNode) return;
+
+    const track = this.localQueue[this.localQueueIndex];
+    if (!track) return;
+
+    this.localStatus.current_track = this.mapTrackToCurrentTrack(track);
+    this.localStatus.duration_seconds = track.duration_seconds;
+    this.localStatus.queue_index = this.localQueueIndex;
+    this.localStatus.queue_length = this.localQueue.length;
+    this.localStatus.playing = true;
+    this.localStatus.position_seconds = Math.round(offset);
+    this.triggerUpdate();
+
+    const buffer = await this.fetchAndDecodeTrack(track);
+    if (!buffer) {
       this.localStatus.playing = false;
       this.triggerUpdate();
-    });
+      return;
+    }
 
-    this.localAudio.addEventListener('timeupdate', () => {
-      if (this.localAudio) {
-        this.localStatus.position_seconds = Math.round(this.localAudio.currentTime);
+    this.activeBuffer = buffer;
+    this.playbackStartTime = this.audioCtx.currentTime;
+    this.trackOffset = offset;
+
+    this.activeSource = this.audioCtx.createBufferSource();
+    this.activeSource.buffer = buffer;
+    this.activeSource.connect(this.gainNode);
+    this.activeSource.start(this.playbackStartTime, offset);
+
+    this.activeSource.onended = () => {
+      // Only advance if this source is still the active one and wasn't stopped manually
+      if (this.audioCtx && this.activeSource && this.audioCtx.currentTime >= this.playbackStartTime + buffer.duration - offset - 0.1) {
+        this.handleTrackTransition();
+      }
+    };
+
+    this.positionInterval = setInterval(() => {
+      if (this.audioCtx && this.localStatus.playing && this.activeBuffer) {
+        const elapsed = this.audioCtx.currentTime - this.playbackStartTime + this.trackOffset;
+        this.localStatus.position_seconds = Math.min(
+          Math.round(elapsed),
+          this.localStatus.duration_seconds
+        );
         this.triggerUpdate();
       }
-    });
+    }, 250);
 
-    this.localAudio.addEventListener('durationchange', () => {
-      if (this.localAudio) {
-        this.localStatus.duration_seconds = Math.round(this.localAudio.duration) || 0;
-        this.triggerUpdate();
-      }
-    });
+    // Pre-fetch next track for gapless transition
+    this.prefetchNextTrack();
+  }
 
-    this.localAudio.addEventListener('volumechange', () => {
-      if (this.localAudio) {
-        this.localStatus.volume = this.localAudio.volume;
-        this.triggerUpdate();
-      }
-    });
-
-    this.localAudio.addEventListener('ended', async () => {
-      this.localStatus.position_seconds = 0;
-      if (this.localQueueIndex + 1 < this.localQueue.length) {
-        this.localQueueIndex++;
-        const nextTrack = this.localQueue[this.localQueueIndex];
-        const mediaUrl = `${this.serverUrl}/media/${nextTrack.id}`;
-
-        this.localStatus.current_track = this.mapTrackToCurrentTrack(nextTrack);
-        this.localStatus.queue_index = this.localQueueIndex;
-        if (this.localAudio) {
-          this.localAudio.src = mediaUrl;
-          this.localAudio.load();
-          try {
-            await this.localAudio.play();
-          } catch (err) {
-            console.error('Local autoplay failed:', err);
-          }
+  private prefetchNextTrack() {
+    const nextIndex = this.localQueueIndex + 1;
+    if (nextIndex < this.localQueue.length && this.audioCtx && this.activeBuffer && this.gainNode) {
+      const nextTrack = this.localQueue[nextIndex];
+      this.fetchAndDecodeTrack(nextTrack).then((nextBuf) => {
+        if (nextBuf && nextIndex === this.localQueueIndex + 1 && this.audioCtx && this.gainNode && this.activeBuffer) {
+          this.nextBuffer = nextBuf;
+          const T_next = this.playbackStartTime + this.activeBuffer.duration - this.trackOffset;
+          this.nextSource = this.audioCtx.createBufferSource();
+          this.nextSource.buffer = nextBuf;
+          this.nextSource.connect(this.gainNode);
+          this.nextSource.start(T_next);
         }
+      });
+    }
+  }
+
+  private handleTrackTransition() {
+    const nextIndex = this.localQueueIndex + 1;
+    if (nextIndex < this.localQueue.length) {
+      this.localQueueIndex = nextIndex;
+      const nextTrack = this.localQueue[nextIndex];
+      
+      this.localStatus.current_track = this.mapTrackToCurrentTrack(nextTrack);
+      this.localStatus.duration_seconds = nextTrack.duration_seconds;
+      this.localStatus.queue_index = nextIndex;
+      this.localStatus.position_seconds = 0;
+      this.triggerUpdate();
+
+      if (this.nextBuffer && this.audioCtx) {
+        // Shift scheduled next track to active track
+        const prevDuration = this.activeBuffer ? this.activeBuffer.duration : 0;
+        this.activeSource = this.nextSource;
+        this.activeBuffer = this.nextBuffer;
+        this.playbackStartTime = this.playbackStartTime + prevDuration - this.trackOffset;
+        this.trackOffset = 0;
+        this.nextSource = null;
+        this.nextBuffer = null;
+
+        if (this.activeSource) {
+          this.activeSource.onended = () => {
+            if (this.audioCtx && this.activeSource && this.activeBuffer && this.audioCtx.currentTime >= this.playbackStartTime + this.activeBuffer.duration - 0.1) {
+              this.handleTrackTransition();
+            }
+          };
+        }
+        
+        // Pre-fetch the *new* next track
+        this.prefetchNextTrack();
       } else {
-        this.localStatus.playing = false;
-        this.triggerUpdate();
+        // Fallback if not decoded in time
+        this.startLocalPlayback(0);
       }
-    });
+    } else {
+      this.localStatus.playing = false;
+      this.stopLocalPlayback();
+      this.triggerUpdate();
+    }
   }
 
   public getLocalQueue() {
@@ -308,39 +419,14 @@ class PlayerService {
   public async playTracks(tracks: Track[], serverUrl: string, startIndex: number = 0) {
     if (tracks.length === 0) return;
     this.serverUrl = serverUrl;
-    const startTrack = tracks[startIndex];
-    const mediaUrl = `${serverUrl}/media/${startTrack.id}`;
 
     if (this.playerType === 'Browser') {
-      if (this.localAudio) {
-        // Pause current audio
-        this.localAudio.pause();
-
-        // Maintain simulated local queue
-        this.localQueue = [...tracks];
-        this.localQueueIndex = startIndex;
-
-        this.localStatus.current_track = this.mapTrackToCurrentTrack(startTrack);
-        this.localStatus.position_seconds = 0;
-        this.localStatus.duration_seconds = startTrack.duration_seconds;
-        this.localStatus.queue_index = startIndex;
-        this.localStatus.queue_length = tracks.length;
-
-        this.localAudio.src = mediaUrl;
-        this.localAudio.load();
-        try {
-          await this.localAudio.play();
-        } catch (err) {
-          console.error('Playback failed:', err);
-        }
-      }
+      this.localQueue = [...tracks];
+      this.localQueueIndex = startIndex;
+      this.startLocalPlayback(0);
     } else {
       // Remote player API call
-      // Pause local browser if active
-      if (this.localAudio && !this.localAudio.paused) {
-        this.localAudio.pause();
-      }
-
+      this.stopLocalPlayback();
       const playerUrl = this.playerType;
       try {
         await fetch(`${playerUrl}/queue`, {
@@ -382,24 +468,9 @@ class PlayerService {
       // If nothing is currently playing, load and play the first added track
       if (!this.localStatus.current_track && this.localQueue.length > 0) {
         this.localQueueIndex = 0;
-        const firstTrack = this.localQueue[0];
-        const mediaUrl = `${serverUrl}/media/${firstTrack.id}`;
-
-        this.localStatus.current_track = this.mapTrackToCurrentTrack(firstTrack);
-        this.localStatus.position_seconds = 0;
-        this.localStatus.duration_seconds = firstTrack.duration_seconds;
-        this.localStatus.queue_index = 0;
-
-        if (this.localAudio) {
-          this.localAudio.src = mediaUrl;
-          this.localAudio.load();
-          try {
-            await this.localAudio.play();
-          } catch (err) {
-            console.error('Playback failed:', err);
-          }
-        }
+        this.startLocalPlayback(0);
       } else {
+        this.prefetchNextTrack();
         this.triggerUpdate();
       }
     } else {
@@ -425,15 +496,16 @@ class PlayerService {
 
   public async togglePlay(currentlyPlaying: boolean) {
     if (this.playerType === 'Browser') {
-      if (this.localAudio) {
+      this.initAudioContext();
+      if (this.audioCtx) {
         if (currentlyPlaying) {
-          this.localAudio.pause();
+          await this.audioCtx.suspend();
+          this.localStatus.playing = false;
+          this.triggerUpdate();
         } else {
-          try {
-            await this.localAudio.play();
-          } catch (err) {
-            console.error('Failed to resume playback:', err);
-          }
+          await this.audioCtx.resume();
+          this.localStatus.playing = true;
+          this.triggerUpdate();
         }
       }
     } else {
@@ -449,11 +521,7 @@ class PlayerService {
 
   public async seek(positionSeconds: number) {
     if (this.playerType === 'Browser') {
-      if (this.localAudio) {
-        this.localAudio.currentTime = positionSeconds;
-        this.localStatus.position_seconds = positionSeconds;
-        this.triggerUpdate();
-      }
+      this.startLocalPlayback(positionSeconds);
     } else {
       const playerUrl = this.playerType;
       try {
@@ -470,11 +538,11 @@ class PlayerService {
 
   public async setVolume(volume: number) {
     if (this.playerType === 'Browser') {
-      if (this.localAudio) {
-        this.localAudio.volume = volume;
-        this.localStatus.volume = volume;
-        this.triggerUpdate();
+      this.localStatus.volume = volume;
+      if (this.gainNode && this.audioCtx) {
+        this.gainNode.gain.setValueAtTime(volume, this.audioCtx.currentTime);
       }
+      this.triggerUpdate();
     } else {
       const playerUrl = this.playerType;
       try {
@@ -490,39 +558,14 @@ class PlayerService {
   }
 
   public triggerCast() {
-    if (this.localAudio) {
-      const audio = this.localAudio as any;
-      if (typeof audio.webkitShowPlaybackTargetPicker === 'function') {
-        audio.webkitShowPlaybackTargetPicker();
-      } else if (audio.remote && typeof audio.remote.prompt === 'function') {
-        audio.remote.prompt().catch((err: any) => {
-          console.error('Remote playback prompt failed:', err);
-        });
-      } else {
-        console.warn('Casting is not supported in this browser.');
-      }
-    }
+    console.log('Local Web Audio output casting is handled natively via OS output device selection.');
   }
 
   public async next() {
     if (this.playerType === 'Browser') {
       if (this.localQueueIndex + 1 < this.localQueue.length) {
         this.localQueueIndex++;
-        const nextTrack = this.localQueue[this.localQueueIndex];
-        const mediaUrl = `${this.serverUrl}/media/${nextTrack.id}`;
-        this.localStatus.current_track = this.mapTrackToCurrentTrack(nextTrack);
-        this.localStatus.position_seconds = 0;
-        this.localStatus.duration_seconds = nextTrack.duration_seconds;
-        this.localStatus.queue_index = this.localQueueIndex;
-        if (this.localAudio) {
-          this.localAudio.src = mediaUrl;
-          this.localAudio.load();
-          try {
-            await this.localAudio.play();
-          } catch (err) {
-            console.error('Local next track autoplay failed:', err);
-          }
-        }
+        this.startLocalPlayback(0);
       }
     } else {
       const playerUrl = this.playerType;
@@ -538,21 +581,7 @@ class PlayerService {
     if (this.playerType === 'Browser') {
       if (this.localQueueIndex > 0) {
         this.localQueueIndex--;
-        const prevTrack = this.localQueue[this.localQueueIndex];
-        const mediaUrl = `${this.serverUrl}/media/${prevTrack.id}`;
-        this.localStatus.current_track = this.mapTrackToCurrentTrack(prevTrack);
-        this.localStatus.position_seconds = 0;
-        this.localStatus.duration_seconds = prevTrack.duration_seconds;
-        this.localStatus.queue_index = this.localQueueIndex;
-        if (this.localAudio) {
-          this.localAudio.src = mediaUrl;
-          this.localAudio.load();
-          try {
-            await this.localAudio.play();
-          } catch (err) {
-            console.error('Local previous track autoplay failed:', err);
-          }
-        }
+        this.startLocalPlayback(0);
       }
     } else {
       const playerUrl = this.playerType;
@@ -568,21 +597,7 @@ class PlayerService {
     if (this.playerType === 'Browser') {
       if (index >= 0 && index < this.localQueue.length) {
         this.localQueueIndex = index;
-        const track = this.localQueue[this.localQueueIndex];
-        const mediaUrl = `${this.serverUrl}/media/${track.id}`;
-        this.localStatus.current_track = this.mapTrackToCurrentTrack(track);
-        this.localStatus.position_seconds = 0;
-        this.localStatus.duration_seconds = track.duration_seconds;
-        this.localStatus.queue_index = this.localQueueIndex;
-        if (this.localAudio) {
-          this.localAudio.src = mediaUrl;
-          this.localAudio.load();
-          try {
-            await this.localAudio.play();
-          } catch (err) {
-            console.error('Local index autoplay failed:', err);
-          }
-        }
+        this.startLocalPlayback(0);
       }
     } else {
       const playerUrl = this.playerType;
@@ -622,10 +637,7 @@ class PlayerService {
       }
 
       // If removing the active track:
-      if (this.localAudio) {
-        this.localAudio.pause();
-      }
-
+      this.stopLocalPlayback();
       this.localQueue.splice(index, 1);
 
       if (this.localQueue.length === 0) {
@@ -647,29 +659,18 @@ class PlayerService {
       }
 
       this.localQueueIndex = newIndex;
-      const nextTrack = this.localQueue[newIndex];
-      const mediaUrl = `${this.serverUrl}/media/${nextTrack.id}`;
-
-      this.localStatus.current_track = this.mapTrackToCurrentTrack(nextTrack);
-      this.localStatus.position_seconds = 0;
-      this.localStatus.duration_seconds = nextTrack.duration_seconds;
-      this.localStatus.queue_index = newIndex;
-      this.localStatus.queue_length = this.localQueue.length;
-
-      if (this.localAudio) {
-        this.localAudio.src = mediaUrl;
-        this.localAudio.load();
-        if (wasPlaying) {
-          try {
-            this.localStatus.playing = true;
-            await this.localAudio.play();
-          } catch (err) {
-            console.error('Local remove autoplay failed:', err);
-          }
-        } else {
-          this.localStatus.playing = false;
-          this.triggerUpdate();
-        }
+      
+      if (wasPlaying) {
+        this.startLocalPlayback(0);
+      } else {
+        const nextTrack = this.localQueue[newIndex];
+        this.localStatus.current_track = this.mapTrackToCurrentTrack(nextTrack);
+        this.localStatus.position_seconds = 0;
+        this.localStatus.duration_seconds = nextTrack.duration_seconds;
+        this.localStatus.queue_index = newIndex;
+        this.localStatus.queue_length = this.localQueue.length;
+        this.localStatus.playing = false;
+        this.triggerUpdate();
       }
     } else {
       const playerUrl = this.playerType;
@@ -691,9 +692,10 @@ class PlayerService {
 
   public destroy() {
     this.disconnectWebSocket();
-    if (this.localAudio) {
-      this.localAudio.pause();
-      this.localAudio.src = '';
+    this.stopLocalPlayback();
+    if (this.audioCtx) {
+      this.audioCtx.close();
+      this.audioCtx = null;
     }
   }
 }
