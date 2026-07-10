@@ -18,8 +18,7 @@ Returns the current playback status.
   "volume": 1,
   "current_track": {
     "id": 42,
-    "url": "http://localhost:3001/media/42",
-    "duration_seconds": 240
+    "url": "http://localhost:3001/media/42"
   },
   "queue_index": 0,
   "queue_length": 3

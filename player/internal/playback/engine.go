@@ -19,12 +19,17 @@ var (
 	ErrInvalidVolume = errors.New("volume must be between 0 and 1")
 )
 
+type StatusTrack struct {
+	ID  int64  `json:"id"`
+	URL string `json:"url"`
+}
+
 type Status struct {
 	Playing         bool         `json:"playing"`
 	PositionSeconds float64      `json:"position_seconds"`
 	DurationSeconds int          `json:"duration_seconds"`
 	Volume          float64      `json:"volume"`
-	CurrentTrack    *queue.Track `json:"current_track"`
+	CurrentTrack    *StatusTrack `json:"current_track"`
 	QueueIndex      int          `json:"queue_index"`
 	QueueLength     int          `json:"queue_length"`
 }
@@ -313,14 +318,16 @@ func (e *Engine) openTrack(url string) (beep.StreamSeekCloser, beep.Format, erro
 
 func (e *Engine) statusLocked() Status {
 	track, err := e.queue.Current()
-	var current *queue.Track
-	if err == nil {
-		copy := track
-		current = &copy
-	}
+	var current *StatusTrack
 	durationSeconds := int(e.duration / time.Second)
-	if current != nil && current.DurationSeconds > 0 {
-		durationSeconds = current.DurationSeconds
+	if err == nil {
+		current = &StatusTrack{
+			ID:  track.ID,
+			URL: track.URL,
+		}
+		if track.DurationSeconds > 0 {
+			durationSeconds = track.DurationSeconds
+		}
 	}
 	return Status{
 		Playing:         e.playing && !e.paused,

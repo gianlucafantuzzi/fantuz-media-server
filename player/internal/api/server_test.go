@@ -27,7 +27,10 @@ func (m *mockPlayer) SetQueue(tracks []queue.Track, replace bool) {
 	m.status.QueueLength = len(tracks)
 	if len(tracks) > 0 {
 		track := tracks[0]
-		m.status.CurrentTrack = &track
+		m.status.CurrentTrack = &playback.StatusTrack{
+			ID:  track.ID,
+			URL: track.URL,
+		}
 	}
 }
 

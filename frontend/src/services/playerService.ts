@@ -112,6 +112,7 @@ class PlayerService {
           ...remoteStatus.current_track,
           title: track.title,
           artist: track.artist,
+          duration_seconds: track.duration_seconds || remoteStatus.duration_seconds || 0,
           album_id: track.album_id,
           composer: track.composer,
           date: track.date,
