@@ -61,7 +61,7 @@ func New(onChange func(Status)) *Engine {
 }
 
 func (e *Engine) InitSpeaker() error {
-	return speaker.Init(e.sampleRate, e.sampleRate.N(time.Second/10))
+	return speaker.Init(e.sampleRate, e.sampleRate.N(time.Second/2))
 }
 
 func (e *Engine) SetOnChange(onChange func(Status)) {
@@ -343,7 +343,6 @@ func (e *Engine) statusLocked() Status {
 		QueueLength:     e.queue.Len(),
 	}
 }
-
 
 func (e *Engine) notifyLocked() {
 	if e.onChange == nil {
