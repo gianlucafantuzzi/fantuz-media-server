@@ -20,7 +20,7 @@ export const TopBar: React.FC<TopBarProps> = ({
 }) => {
   return (
     <header className="top-bar">
-      <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+      <div className="top-bar-left">
         <button className="menu-button" onClick={onMenuClick} aria-label="Open Menu">
           <svg
             width="24"
@@ -51,16 +51,25 @@ export const TopBar: React.FC<TopBarProps> = ({
           </svg>
         </button>
 
-        <select
-          id="device-selector"
-          className="device-select"
-          value={activeDevice}
-          onChange={(e) => onChangeDevice(e.target.value)}
-          aria-label="Select Playback Device"
-        >
-          <option value="This device">This device</option>
-          <option value="Remote player">Remote player</option>
-        </select>
+        <div className="device-select-container">
+          <button className="device-select-btn" aria-label="Select Playback Device" title={`Device: ${activeDevice}`}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="4" y="2" width="16" height="20" rx="2" ry="2" />
+              <circle cx="12" cy="14" r="3" />
+              <line x1="12" y1="6" x2="12.01" y2="6" />
+            </svg>
+          </button>
+          <select
+            id="device-selector"
+            className="device-select"
+            value={activeDevice}
+            onChange={(e) => onChangeDevice(e.target.value)}
+            aria-label="Select Playback Device"
+          >
+            <option value="This device">This device</option>
+            <option value="Remote player">Remote player</option>
+          </select>
+        </div>
       </div>
 
       <div className="logo-container">

@@ -111,10 +111,11 @@ A top bar is present at all times and it includes in order:
 * A dropdown menu with two options: "This device" and "Remote player"
     * When on "This device" all playback happens in the browser
     * When on "Remote player" all playback happens on the configured player application
+    * If the screen is too small to contain the dropdown menu, an icon is present that opens the dropdown with the options - The icon should be appropriate for the choice of an output device
 * At the center the image in ./frontend/images/FantuzMediaServerLogoHorizontal.png. The image is sized in such a way that its height coincides with the height of the whole top bar.
 * On the right of the bar, a "cast" button
     * When not in "This device" the button is grayed out and inactive
-    * When clicked, a panel comes out listing the available Airplay and Bluetooth devices. When a device is chosen, the audio is cast from the browser to that device.
+    * When clicked, a panel comes out listing the available Airplay and Bluetooth devices. When a device is chosen, the audio is cast from the browser to that device. 
 
 #### Sidebar
 
