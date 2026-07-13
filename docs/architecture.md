@@ -373,5 +373,5 @@ The screen is divided into three tabs: "Add/remove tags", "Edit album metadata" 
     * Raspberry Pi
 * HTTP REST API exposed on port 3002
 * Using WebSockets to maintain the session and export playback status
-* Using github.com/gopxl/beep for playback
+* Using Media Player Daemon (mdp) for playback
 * he Player doesn't need to talk to the Server directly; it just streams whatever URL the Frontend gives it

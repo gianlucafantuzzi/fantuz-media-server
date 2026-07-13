@@ -8,7 +8,7 @@ func TestQueueReplaceAndCurrent(t *testing.T) {
 		t.Fatalf("expected empty queue error, got %v", err)
 	}
 
-	q.Replace([]Track{{URL: "a", Title: "A"}, {URL: "b", Title: "B"}})
+	q.Replace([]Track{{URL: "a"}, {URL: "b"}})
 	track, err := q.Current()
 	if err != nil {
 		t.Fatalf("current: %v", err)
