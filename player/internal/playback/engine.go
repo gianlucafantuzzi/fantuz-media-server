@@ -2,16 +2,13 @@ package playback
 
 import (
 	"errors"
-	"net/http"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	"fantuz-media-server/player/internal/queue"
-
 	"github.com/fhs/gompd/v2/mpd"
-	"github.com/gopxl/beep"
 )
 
 var (
@@ -100,7 +97,7 @@ func (e *Engine) connectionAndIdleLoop() {
 			e.watcher = watcher
 			e.mu.Unlock()
 
-		watcherLoop:
+			watcherLoop:
 			for {
 				select {
 				case <-e.closeChan:
@@ -216,6 +213,7 @@ func (e *Engine) updateAndNotify() {
 			}
 		}
 	}
+
 
 	duration := 0
 	if durationStr, ok := attrs["duration"]; ok {
@@ -455,98 +453,9 @@ func (e *Engine) Previous() error {
 
 	err := e.client.Previous()
 	if err != nil {
-		return nil, beep.Format{}, err
+		e.handleErrorLocked(err)
 	}
-	if response.StatusCode != http.StatusOK {
-		response.Body.Close()
-		return nil, beep.Format{}, errors.New("failed to open track URL")
-	}
-	return decodeStream(url, response.Header.Get("Content-Type"), response.Body)
-}
-
-func (e *Engine) statusLocked() Status {
-	track, err := e.queue.Current()
-	var current *StatusTrack
-	durationSeconds := int(e.duration / time.Second)
-	if err == nil {
-		current = &StatusTrack{
-			ID:  track.ID,
-			URL: track.URL,
-		}
-		if track.DurationSeconds > 0 {
-			durationSeconds = track.DurationSeconds
-		}
-	}
-	return Status{
-		Playing:         e.playing && !e.paused,
-		PositionSeconds: e.position.Seconds(),
-		DurationSeconds: durationSeconds,
-		Volume:          e.volume,
-		CurrentTrack:    current,
-		QueueIndex:      e.queue.Index(),
-		QueueLength:     e.queue.Len(),
-	}
-}
-
-func (e *Engine) notifyLocked() {
-	if e.onChange == nil {
-		return
-	}
-	status := e.statusLocked()
-	go e.onChange(status)
-}
-
-func trackDuration(q *queue.Queue) time.Duration {
-	track, err := q.Current()
-	if err != nil || track.DurationSeconds <= 0 {
-		return 0
-	}
-	return time.Duration(track.DurationSeconds) * time.Second
-}
-
-func volumeToBeep(volume float64) float64 {
-	if volume <= 0 {
-		return -5
-	}
-	if volume >= 1 {
-		return 0
-	}
-	return -5 + volume*5
-}
-
-type sampleDropper struct {
-	streamer  beep.Streamer
-	remaining int
-}
-
-func dropSamples(streamer beep.Streamer, count int) beep.Streamer {
-	if count <= 0 {
-		return streamer
-	}
-	return &sampleDropper{streamer: streamer, remaining: count}
-}
-
-func (d *sampleDropper) Stream(samples [][2]float64) (int, bool) {
-	for d.remaining > 0 {
-		discard := make([][2]float64, min(d.remaining, 512))
-		n, ok := d.streamer.Stream(discard)
-		if n == 0 {
-			return 0, ok
-		}
-		d.remaining -= n
-	}
-	return d.streamer.Stream(samples)
-}
-
-func (d *sampleDropper) Err() error {
-	return d.streamer.Err()
-}
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
+	return err
 }
 
 func (e *Engine) Remove(index int) error {
