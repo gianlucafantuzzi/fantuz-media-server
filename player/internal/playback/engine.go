@@ -36,6 +36,7 @@ type Engine struct {
 	mu              sync.Mutex
 	mpdAddr         string
 	client          *mpd.Client
+	watcher         *mpd.Watcher
 	queueTracks     []queue.Track
 	onChange        func(Status)
 	playing         bool
@@ -92,6 +93,10 @@ func (e *Engine) connectionAndIdleLoop() {
 		// Monitor subsystem updates reactively via MPD idle watcher
 		watcher, err := mpd.NewWatcher("tcp", e.mpdAddr, "", "player", "playlist", "mixer", "options")
 		if err == nil {
+			e.mu.Lock()
+			e.watcher = watcher
+			e.mu.Unlock()
+
 			watcherLoop:
 			for {
 				select {
@@ -110,6 +115,10 @@ func (e *Engine) connectionAndIdleLoop() {
 				}
 			}
 			watcher.Close()
+
+			e.mu.Lock()
+			e.watcher = nil
+			e.mu.Unlock()
 		}
 
 		e.mu.Lock()
@@ -126,6 +135,7 @@ func (e *Engine) connectionAndIdleLoop() {
 func (e *Engine) positionTickerLoop() {
 	ticker := time.NewTicker(250 * time.Millisecond)
 	defer ticker.Stop()
+	var tickCount int
 
 	for {
 		select {
@@ -140,8 +150,28 @@ func (e *Engine) positionTickerLoop() {
 				}
 				e.notifyLocked()
 			}
+			tickCount++
+			if tickCount%40 == 0 && e.client != nil {
+				if err := e.client.Ping(); err != nil {
+					e.handleErrorLocked(err)
+				}
+			}
 			e.mu.Unlock()
 		}
+	}
+}
+
+func (e *Engine) handleErrorLocked(err error) {
+	if err == nil {
+		return
+	}
+	if e.client != nil {
+		_ = e.client.Close()
+		e.client = nil
+	}
+	if e.watcher != nil {
+		_ = e.watcher.Close()
+		e.watcher = nil
 	}
 }
 
@@ -155,6 +185,7 @@ func (e *Engine) updateAndNotify() {
 
 	attrs, err := e.client.Status()
 	if err != nil {
+		e.handleErrorLocked(err)
 		return
 	}
 
@@ -272,7 +303,10 @@ func (e *Engine) SetQueue(tracks []queue.Track, replace bool) {
 	}
 
 	if replace {
-		_ = e.client.Clear()
+		if err := e.client.Clear(); err != nil {
+			e.handleErrorLocked(err)
+			return
+		}
 		e.queueTracks = []queue.Track{}
 		e.queueIndex = -1
 		e.positionSeconds = 0
@@ -280,7 +314,10 @@ func (e *Engine) SetQueue(tracks []queue.Track, replace bool) {
 	}
 
 	for _, track := range tracks {
-		_ = e.client.Add(track.URL)
+		if err := e.client.Add(track.URL); err != nil {
+			e.handleErrorLocked(err)
+			return
+		}
 		e.queueTracks = append(e.queueTracks, track)
 	}
 
@@ -314,7 +351,11 @@ func (e *Engine) PlayIndex(index int) error {
 		return errors.New("index out of range")
 	}
 
-	return e.client.Play(index)
+	err := e.client.Play(index)
+	if err != nil {
+		e.handleErrorLocked(err)
+	}
+	return err
 }
 
 func (e *Engine) Pause() error {
@@ -325,7 +366,11 @@ func (e *Engine) Pause() error {
 		return errors.New("mpd not connected")
 	}
 
-	return e.client.Pause(true)
+	err := e.client.Pause(true)
+	if err != nil {
+		e.handleErrorLocked(err)
+	}
+	return err
 }
 
 func (e *Engine) Seek(seconds float64) error {
@@ -352,11 +397,13 @@ func (e *Engine) Seek(seconds float64) error {
 	}
 
 	err := e.client.SeekCur(time.Duration(seconds*float64(time.Second)), false)
-	if err == nil {
-		e.positionSeconds = seconds
-		e.notifyLocked()
+	if err != nil {
+		e.handleErrorLocked(err)
+		return err
 	}
-	return err
+	e.positionSeconds = seconds
+	e.notifyLocked()
+	return nil
 }
 
 func (e *Engine) SetVolume(volume float64) error {
@@ -372,11 +419,13 @@ func (e *Engine) SetVolume(volume float64) error {
 	}
 
 	err := e.client.SetVolume(int(volume * 100))
-	if err == nil {
-		e.volume = volume
-		e.notifyLocked()
+	if err != nil {
+		e.handleErrorLocked(err)
+		return err
 	}
-	return err
+	e.volume = volume
+	e.notifyLocked()
+	return nil
 }
 
 func (e *Engine) Next() error {
@@ -387,7 +436,11 @@ func (e *Engine) Next() error {
 		return errors.New("mpd not connected")
 	}
 
-	return e.client.Next()
+	err := e.client.Next()
+	if err != nil {
+		e.handleErrorLocked(err)
+	}
+	return err
 }
 
 func (e *Engine) Previous() error {
@@ -398,7 +451,11 @@ func (e *Engine) Previous() error {
 		return errors.New("mpd not connected")
 	}
 
-	return e.client.Previous()
+	err := e.client.Previous()
+	if err != nil {
+		e.handleErrorLocked(err)
+	}
+	return err
 }
 
 func (e *Engine) Remove(index int) error {
@@ -414,11 +471,13 @@ func (e *Engine) Remove(index int) error {
 	}
 
 	err := e.client.Delete(index, -1)
-	if err == nil {
-		e.queueTracks = append(e.queueTracks[:index], e.queueTracks[index+1:]...)
-		e.notifyLocked()
+	if err != nil {
+		e.handleErrorLocked(err)
+		return err
 	}
-	return err
+	e.queueTracks = append(e.queueTracks[:index], e.queueTracks[index+1:]...)
+	e.notifyLocked()
+	return nil
 }
 
 func (e *Engine) Close() {
