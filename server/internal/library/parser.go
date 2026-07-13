@@ -611,37 +611,74 @@ func parseMP3Frame(header uint32) (mp3Frame, bool) {
 	sampleRateIndex := (header >> 10) & 0x3
 	padding := (header >> 9) & 0x1
 
-	if versionID == 1 || layer != 1 || bitrateIndex == 0 || bitrateIndex == 15 || sampleRateIndex == 3 {
+	if versionID == 1 || layer == 0 || bitrateIndex == 0 || bitrateIndex == 15 || sampleRateIndex == 3 {
 		return mp3Frame{}, false
 	}
 
-	bitrate := bitrateKbps(versionID, bitrateIndex)
+	bitrate := bitrateKbps(versionID, layer, bitrateIndex)
 	sampleRate := sampleRateHz(versionID, sampleRateIndex)
 	if bitrate == 0 || sampleRate == 0 {
 		return mp3Frame{}, false
 	}
 
-	samples := 1152
-	coefficient := 144
-	if versionID != 3 {
-		samples = 576
-		coefficient = 72
+	var samples, coefficient int
+	switch layer {
+	case 3: // Layer I
+		samples = 384
+		coefficient = 12
+	case 2: // Layer II
+		samples = 1152
+		coefficient = 144
+	case 1: // Layer III
+		if versionID == 3 {
+			samples = 1152
+			coefficient = 144
+		} else {
+			samples = 576
+			coefficient = 72
+		}
 	}
 
-	size := coefficient*bitrate*1000/sampleRate + int(padding)
+	var size int
+	if layer == 3 {
+		size = (coefficient*bitrate*1000/sampleRate + int(padding)) * 4
+	} else {
+		size = coefficient*bitrate*1000/sampleRate + int(padding)
+	}
+
 	if size <= 0 {
 		return mp3Frame{}, false
 	}
 	return mp3Frame{size: size, samples: samples, sampleRate: sampleRate}, true
 }
 
-func bitrateKbps(versionID uint32, index uint32) int {
-	mpeg1 := []int{0, 32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320}
-	mpeg2 := []int{0, 8, 16, 24, 32, 40, 48, 56, 64, 80, 96, 112, 128, 144, 160}
-	if versionID == 3 {
-		return mpeg1[index]
+func bitrateKbps(versionID uint32, layer uint32, index uint32) int {
+	if index == 0 || index >= 15 {
+		return 0
 	}
-	return mpeg2[index]
+	if versionID == 3 {
+		switch layer {
+		case 3: // Layer I
+			mpeg1L1 := []int{0, 32, 64, 96, 128, 160, 192, 224, 256, 288, 320, 352, 384, 416, 448}
+			return mpeg1L1[index]
+		case 2: // Layer II
+			mpeg1L2 := []int{0, 32, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320, 384}
+			return mpeg1L2[index]
+		case 1: // Layer III
+			mpeg1L3 := []int{0, 32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320}
+			return mpeg1L3[index]
+		}
+	} else {
+		switch layer {
+		case 3: // Layer I
+			mpeg2L1 := []int{0, 32, 48, 56, 64, 80, 96, 112, 128, 144, 160, 176, 192, 224, 256}
+			return mpeg2L1[index]
+		case 2, 1: // Layer II and III
+			mpeg2L23 := []int{0, 8, 16, 24, 32, 40, 48, 56, 64, 80, 96, 112, 128, 144, 160}
+			return mpeg2L23[index]
+		}
+	}
+	return 0
 }
 
 func sampleRateHz(versionID uint32, index uint32) int {
