@@ -238,7 +238,7 @@ export const AlbumView: React.FC<AlbumViewProps> = ({
                           className="track-play-button"
                           onClick={(e) => {
                             e.stopPropagation();
-                            onPlayTracks(sortedTracks, sortedTracks.indexOf(track));
+                            onPlayTracks([track], 0);
                           }}
                           aria-label={`Play ${track.title}`}
                         >
