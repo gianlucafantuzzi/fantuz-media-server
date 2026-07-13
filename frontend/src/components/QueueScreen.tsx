@@ -37,6 +37,14 @@ export const QueueScreen: React.FC<QueueScreenProps> = ({
   const [panelOpen, setPanelOpen] = useState(false);
   const [queueTracks, setQueueTracks] = useState<any[]>([]);
   const [queueLoading, setQueueLoading] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragValue, setDragValue] = useState(position_seconds);
+
+  useEffect(() => {
+    if (!isDragging) {
+      setDragValue(position_seconds);
+    }
+  }, [position_seconds, isDragging]);
 
   // Load albums on mount/change to resolve album names
   useEffect(() => {
@@ -110,7 +118,16 @@ export const QueueScreen: React.FC<QueueScreenProps> = ({
 
   const handleSeekChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = parseFloat(e.target.value);
-    onSeek(value);
+    setDragValue(value);
+  };
+
+  const handleDragStart = () => {
+    setIsDragging(true);
+  };
+
+  const handleDragEnd = () => {
+    setIsDragging(false);
+    onSeek(dragValue);
   };
 
   return (
@@ -234,14 +251,18 @@ export const QueueScreen: React.FC<QueueScreenProps> = ({
             </div>
 
             <div className="player-scrubber">
-              <span className="player-time">{formatDuration(position_seconds)}</span>
+              <span className="player-time">{formatDuration(dragValue)}</span>
               <input
                 type="range"
                 className="player-slider"
                 min="0"
                 max={duration_seconds || 100}
-                value={position_seconds}
+                value={dragValue}
                 onChange={handleSeekChange}
+                onMouseDown={handleDragStart}
+                onTouchStart={handleDragStart}
+                onMouseUp={handleDragEnd}
+                onTouchEnd={handleDragEnd}
               />
               <span className="player-time">{formatDuration(duration_seconds)}</span>
             </div>

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import type { PlayerStatus } from '../services/playerService';
 import { formatDuration } from '../views/SearchView';
 
@@ -22,13 +22,30 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
   onOpenQueue,
 }) => {
   const { current_track, playing, position_seconds, duration_seconds, volume } = status;
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragValue, setDragValue] = useState(position_seconds);
+
+  useEffect(() => {
+    if (!isDragging) {
+      setDragValue(position_seconds);
+    }
+  }, [position_seconds, isDragging]);
 
   // Do not render Player Bar if no track is loaded
   if (!current_track) return null;
 
   const handleSeekChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = parseFloat(e.target.value);
-    onSeek(value);
+    setDragValue(value);
+  };
+
+  const handleDragStart = () => {
+    setIsDragging(true);
+  };
+
+  const handleDragEnd = () => {
+    setIsDragging(false);
+    onSeek(dragValue);
   };
 
   const handleVolumeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -127,14 +144,18 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
 
         {/* Scrubber Progress Bar */}
         <div className="player-scrubber">
-          <span className="player-time">{formatDuration(position_seconds)}</span>
+          <span className="player-time">{formatDuration(dragValue)}</span>
           <input
             type="range"
             className="player-slider"
             min="0"
             max={duration_seconds || 100}
-            value={position_seconds}
+            value={dragValue}
             onChange={handleSeekChange}
+            onMouseDown={handleDragStart}
+            onTouchStart={handleDragStart}
+            onMouseUp={handleDragEnd}
+            onTouchEnd={handleDragEnd}
           />
           <span className="player-time">{formatDuration(duration_seconds)}</span>
         </div>

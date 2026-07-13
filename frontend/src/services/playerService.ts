@@ -153,6 +153,9 @@ class PlayerService {
 
   // Remote Player WebSocket
   private ws: WebSocket | null = null;
+  private activeSeekAbortController: AbortController | null = null;
+  private localPlaybackAbortController: AbortController | null = null;
+  private playbackSessionId: number = 0;
 
   constructor() {
     // Web Audio API Context is initialized on first user interaction
@@ -171,16 +174,18 @@ class PlayerService {
     }
   }
 
-  private async fetchAndDecodeTrack(track: Track): Promise<AudioBuffer | null> {
+  private async fetchAndDecodeTrack(track: Track, signal?: AbortSignal): Promise<AudioBuffer | null> {
     if (!this.audioCtx || !this.serverUrl) return null;
     const url = `${this.serverUrl}/media/${track.id}`;
     try {
-      const res = await fetch(url);
+      const res = await fetch(url, { signal });
       if (!res.ok) throw new Error(`HTTP error ${res.status}`);
       const arrayBuf = await res.arrayBuffer();
       return await this.audioCtx.decodeAudioData(arrayBuf);
-    } catch (e) {
-      console.error(`Failed to fetch/decode track ${track.id}:`, e);
+    } catch (e: any) {
+      if (e.name !== 'AbortError') {
+        console.error(`Failed to fetch/decode track ${track.id}:`, e);
+      }
       return null;
     }
   }
@@ -210,6 +215,15 @@ class PlayerService {
 
   private async startLocalPlayback(offset: number = 0) {
     this.stopLocalPlayback();
+    if (this.localPlaybackAbortController) {
+      this.localPlaybackAbortController.abort();
+    }
+    const controller = new AbortController();
+    this.localPlaybackAbortController = controller;
+    
+    this.playbackSessionId++;
+    const sessionId = this.playbackSessionId;
+
     this.initAudioContext();
     if (!this.audioCtx || !this.gainNode) return;
 
@@ -224,7 +238,11 @@ class PlayerService {
     this.localStatus.position_seconds = Math.round(offset);
     this.triggerUpdate();
 
-    const buffer = await this.fetchAndDecodeTrack(track);
+    const buffer = await this.fetchAndDecodeTrack(track, controller.signal);
+    if (sessionId !== this.playbackSessionId) {
+      return;
+    }
+
     if (!buffer) {
       this.localStatus.playing = false;
       this.triggerUpdate();
@@ -524,14 +542,29 @@ class PlayerService {
       this.startLocalPlayback(positionSeconds);
     } else {
       const playerUrl = this.playerType;
+      if (this.activeSeekAbortController) {
+        this.activeSeekAbortController.abort();
+      }
+      const controller = new AbortController();
+      this.activeSeekAbortController = controller;
+
       try {
         await fetch(`${playerUrl}/seek`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ position_seconds: positionSeconds }),
+          signal: controller.signal,
         });
-      } catch (err) {
-        console.error('Failed to seek on remote player:', err);
+        if (this.activeSeekAbortController === controller) {
+          this.activeSeekAbortController = null;
+        }
+      } catch (err: any) {
+        if (err.name !== 'AbortError') {
+          console.error('Failed to seek on remote player:', err);
+        }
+        if (this.activeSeekAbortController === controller) {
+          this.activeSeekAbortController = null;
+        }
       }
     }
   }

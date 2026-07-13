@@ -322,7 +322,7 @@ func (s *Server) handlePlaylist(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleMedia(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
 		methodNotAllowed(w)
 		return
 	}
@@ -339,11 +339,38 @@ func (s *Server) handleMedia(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
+
+	ext := strings.ToLower(filepath.Ext(path))
+	switch ext {
+	case ".flac":
+		w.Header().Set("Content-Type", "audio/flac")
+	case ".mp3":
+		w.Header().Set("Content-Type", "audio/mpeg")
+	case ".m4a":
+		w.Header().Set("Content-Type", "audio/mp4")
+	case ".wav":
+		w.Header().Set("Content-Type", "audio/wav")
+	case ".ogg", ".oga":
+		w.Header().Set("Content-Type", "audio/ogg")
+	case ".opus":
+		w.Header().Set("Content-Type", "audio/opus")
+	}
+
+	rangeHeader := r.Header.Get("Range")
+	if rangeHeader != "" {
+		if strings.HasPrefix(rangeHeader, "bytes=") {
+			parts := strings.Split(rangeHeader, "=")
+			if len(parts) == 2 && !strings.Contains(parts[1], "-") {
+				r.Header.Set("Range", rangeHeader + "-")
+			}
+		}
+	}
+
 	http.ServeFile(w, r, path)
 }
 
 func (s *Server) handleArtwork(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
 		methodNotAllowed(w)
 		return
 	}
@@ -465,7 +492,7 @@ func methodNotAllowed(w http.ResponseWriter) {
 func cors(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS, HEAD")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusNoContent)
