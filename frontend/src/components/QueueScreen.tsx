@@ -222,7 +222,12 @@ export const QueueScreen: React.FC<QueueScreenProps> = ({
           {/* Transport Controls & Scrubber */}
           <div className="queue-screen-controls-section">
             <div className="player-buttons">
-              <button className="player-btn" onClick={onPrevious} aria-label="Previous Track">
+              <button
+                className="player-btn"
+                onClick={onPrevious}
+                disabled={status.queue_index === 0}
+                aria-label="Previous Track"
+              >
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <polygon points="19 20 9 12 19 4 19 20" />
                   <line x1="5" y1="19" x2="5" y2="5" />
@@ -242,7 +247,12 @@ export const QueueScreen: React.FC<QueueScreenProps> = ({
                 )}
               </button>
 
-              <button className="player-btn" onClick={onNext} aria-label="Next Track">
+              <button
+                className="player-btn"
+                onClick={onNext}
+                disabled={status.queue_length <= 1 || status.queue_index === status.queue_length - 1}
+                aria-label="Next Track"
+              >
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <polygon points="5 4 15 12 5 20 5 4" />
                   <line x1="19" y1="5" x2="19" y2="19" />

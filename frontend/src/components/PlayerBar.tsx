@@ -54,6 +54,9 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
   };
 
 
+  const isPreviousDisabled = status.queue_index === 0;
+  const isNextDisabled = status.queue_length <= 1 || status.queue_index === status.queue_length - 1;
+
   return (
     <div className="player-bar">
       {/* Pull Tab Handle */}
@@ -68,19 +71,19 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
         <div className="player-artwork-wrapper">
           {current_track.artwork_url ? (
             <img
-              src={current_track.artwork_url}
-              alt={current_track.title}
-              className="player-artwork"
-              onError={(e) => {
-                (e.target as HTMLElement).style.display = 'none';
-                const parent = (e.target as HTMLElement).parentElement;
-                if (parent) {
-                  const placeholder = parent.querySelector('.player-artwork-placeholder');
-                  if (placeholder) {
-                    (placeholder as HTMLElement).style.display = 'flex';
-                  }
-                }
-              }}
+               src={current_track.artwork_url}
+               alt={current_track.title}
+               className="player-artwork"
+               onError={(e) => {
+                 (e.target as HTMLElement).style.display = 'none';
+                 const parent = (e.target as HTMLElement).parentElement;
+                 if (parent) {
+                   const placeholder = parent.querySelector('.player-artwork-placeholder');
+                   if (placeholder) {
+                     (placeholder as HTMLElement).style.display = 'flex';
+                   }
+                 }
+               }}
             />
           ) : null}
           <div
@@ -108,7 +111,12 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
       <div className="player-controls-container">
         <div className="player-buttons">
           {/* Previous Track Button */}
-          <button className="player-btn" onClick={onPrevious} aria-label="Previous Track">
+          <button
+            className="player-btn"
+            onClick={onPrevious}
+            disabled={isPreviousDisabled}
+            aria-label="Previous Track"
+          >
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <polygon points="19 20 9 12 19 4 19 20" />
               <line x1="5" y1="19" x2="5" y2="5" />
@@ -134,7 +142,12 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
           </button>
 
           {/* Next Track Button */}
-          <button className="player-btn" onClick={onNext} aria-label="Next Track">
+          <button
+            className="player-btn"
+            onClick={onNext}
+            disabled={isNextDisabled}
+            aria-label="Next Track"
+          >
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <polygon points="5 4 15 12 5 20 5 4" />
               <line x1="19" y1="5" x2="19" y2="19" />

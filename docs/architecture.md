@@ -249,6 +249,8 @@ The "Track" screen is used to provide all information about a track and play it 
     * When "Remote player" is configured in the top bar, the "Player bar" is kept in sync with the current status of the configured player. The "Player bar" is only made visible when the configured player has items in its queue.
     * When "This device" is configured, the player's functionality is replicated in the browser and the playback queue is maintained inside the browser similarly to what would happen with a remote player application.
 
+* When the first track of the queue is being played, the button to go to the previous track is disabled. When the last track of the queue is being played, the button to go to the next track is disabled.
+
 * When the "Player Bar" has a slide element (similar to a paper being extracted from a file) that causes the "Queue Screen" to slide open.
 
 #### Queue Screen

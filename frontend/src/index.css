@@ -773,6 +773,13 @@ h3 {
   color: var(--text-primary);
 }
 
+.player-btn:disabled {
+  color: var(--border);
+  opacity: 0.35;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
 .player-btn-play {
   width: 36px;
   height: 36px;
