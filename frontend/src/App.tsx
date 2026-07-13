@@ -230,7 +230,13 @@ function App() {
     setSelectedTrack(track);
     localStorage.setItem('selectedTrack', JSON.stringify(track));
 
-    const nextHistory = [...screenHistory, { view: 'track', album: selectedAlbum, track }];
+    let nextHistory;
+    if (activeView === 'track') {
+      nextHistory = [...screenHistory];
+      nextHistory[nextHistory.length - 1] = { view: 'track', album: selectedAlbum, track };
+    } else {
+      nextHistory = [...screenHistory, { view: 'track', album: selectedAlbum, track }];
+    }
     setScreenHistory(nextHistory);
     localStorage.setItem('screenHistory', JSON.stringify(nextHistory));
 

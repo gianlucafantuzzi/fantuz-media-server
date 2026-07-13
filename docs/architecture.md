@@ -213,7 +213,7 @@ The "Track" screen is used to provide all information about a track and play it 
         * The artist
     * On the right, a "Next track" button that opens the "Track" screen on the track that follows the current track in the album. If this is the last track of the last disc of the album, the button is disabled.
     
-    * Anchored to the far right of the header, a left arrow that sends you back to the previous screen
+    * Anchored to the far right of the header, a left arrow that sends you back to the previous screen - by previous screen it is meant the screen that first openened the "Track" screen, not another "Track" screen that was previously exited by means of the "Previous track" and "Next track" buttons.
     
 * Under the header, the area on the screen is split into two panels.
 
