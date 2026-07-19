@@ -102,7 +102,6 @@ Playlists are stored in the database and managed via the server API. Each playli
 
 ### Requirements
 
-
 #### Top Bar
 
 A top bar is present at all times and it includes in order:
@@ -121,6 +120,7 @@ A top bar is present at all times and it includes in order:
 
 The sidebar has the following elements exactly in this order:
 * A "Home" menu item that causes the "Home" screen to appear
+* A "Search albums" menu item that causes the "Search albums" screen to appear
 * An "Edit metadata" menu item that causes the "Edit metadata" screen to appear
 * A "Playlists" menu item that causes the "Playlists" screen to appear
 * A "Settings" menu item that causes the "Settings" screen to appear
@@ -284,7 +284,6 @@ The "Track" screen is used to provide all information about a track and play it 
     * If there is no following track, the previous track becomes active
     * If there are no following and no previous tracks in the queue, then the "Queue Screen" slides down and at the end no "Player Bar" shall be visible
 
-
 #### Edit Metadata Screen
 
 The "Edit metadata" screen has the purpose to browse the library on the server and change some of the ID3 tags. This causes changes to both the audio files and the DB. After changes have been made to the files, the library scan server API is invoked to update the DB.
@@ -346,6 +345,10 @@ The screen is divided into three tabs: "Add/remove tags", "Edit album metadata" 
         * "Save" - saves into the metadata of the track the values of all fields. Text boxes left blank cause any data in those fields to be replaced by an empty string. The metadata is actually saved in the files in the server. Then the library scan is invoked to update the DB.
     * Under the fields, the keyword boxes are displayed for the keywords that are present in the track.
     * Under the keywords, there are two buttons: "Add tag(s)" and "Remove tag(s)". They behave exactly as the similar buttons in the "Edit album" tab, but they only work on the current track.
+
+#### Search Albums Screen
+
+* The "Search albums" screen looks similar to the "Edit album metadata" screen with the difference that selecting an album card results in opening the "Album" screen on the corresponding album
 
 #### Playlists Screen
 

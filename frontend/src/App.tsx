@@ -6,6 +6,7 @@ import { SearchView } from './views/SearchView';
 import { AlbumView } from './views/AlbumView';
 import { TrackView } from './views/TrackView';
 import { EditMetadataView } from './views/EditMetadataView';
+import { SearchAlbumsView } from './views/SearchAlbumsView';
 import { PlayerBar } from './components/PlayerBar';
 import { QueueScreen } from './components/QueueScreen';
 import { playerService } from './services/playerService';
@@ -332,6 +333,13 @@ function App() {
           />
         ) : (
           <HomeView onSearch={handleSearch} />
+        );
+      case 'search-albums':
+        return (
+          <SearchAlbumsView
+            serverUrl={selectedServer}
+            onSelectAlbum={handleSelectAlbum}
+          />
         );
       case 'edit-metadata':
         return <EditMetadataView serverUrl={selectedServer} />;
