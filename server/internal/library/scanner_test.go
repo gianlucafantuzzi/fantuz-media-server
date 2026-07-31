@@ -117,3 +117,51 @@ func TestSchemaContainsPlaylistTables(t *testing.T) {
 		}
 	}
 }
+
+func TestScanRemovesEmptyAlbums(t *testing.T) {
+	dir := t.TempDir()
+	db, err := Open(filepath.Join(dir, "fantuz.db"))
+	if err != nil {
+		t.Fatalf("Open returned error: %v", err)
+	}
+	defer db.Close()
+
+	// Insert an empty album with no tracks
+	if _, err := db.sql.Exec(`INSERT INTO albums (title, album_artist) VALUES ('Orphan Album', 'Orphan Artist')`); err != nil {
+		t.Fatalf("failed to insert orphan album: %v", err)
+	}
+
+	trackOne := filepath.Join(dir, "track.mp3")
+	if err := os.WriteFile(trackOne, []byte("track"), 0o644); err != nil {
+		t.Fatalf("write track: %v", err)
+	}
+
+	parser := &fakeParser{metadataByPath: map[string]TrackMetadata{
+		trackOne: {
+			Title:       "Track",
+			Artist:      "Artist",
+			Album:       "Active Album",
+			AlbumArtist: "Active Artist",
+		},
+	}}
+
+	scanner := Scanner{
+		DB:      db,
+		Parser:  parser,
+		Artwork: NewArtworkCache(filepath.Join(dir, ".artwork")),
+	}
+
+	if _, err := scanner.Scan(dir); err != nil {
+		t.Fatalf("Scan returned error: %v", err)
+	}
+
+	albums, err := db.ListAlbums(LibraryFilters{})
+	if err != nil {
+		t.Fatalf("ListAlbums returned error: %v", err)
+	}
+
+	if len(albums) != 1 || albums[0].Title != "Active Album" {
+		t.Fatalf("expected only 'Active Album', got: %#v", albums)
+	}
+}
+

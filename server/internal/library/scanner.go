@@ -85,6 +85,9 @@ func (s Scanner) Scan(root string) (ScanResult, error) {
 	if err != nil {
 		return result, err
 	}
+	if err := s.DB.RemoveEmptyAlbums(); err != nil {
+		return result, err
+	}
 
 	return result, s.DB.RecalculateAlbumDurations(affectedAlbums)
 }

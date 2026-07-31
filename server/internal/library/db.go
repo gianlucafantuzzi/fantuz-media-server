@@ -109,6 +109,16 @@ func (db *DB) RecalculateAlbumDurations(albumIDs []int64) error {
 	return tx.Commit()
 }
 
+func (db *DB) RemoveEmptyAlbums() error {
+	_, err := db.sql.Exec(`
+		DELETE FROM albums
+		WHERE NOT EXISTS (
+			SELECT 1 FROM tracks WHERE tracks.album_id = albums.id
+		)
+	`)
+	return err
+}
+
 func upsertAlbum(tx *sql.Tx, meta TrackMetadata, artworkPath string) (int64, error) {
 	if meta.Album == "" && meta.AlbumArtist == "" {
 		return 0, nil
