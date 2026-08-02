@@ -3,17 +3,53 @@ package library
 import (
 	"database/sql"
 	"errors"
+	"fmt"
+	"strings"
 	"time"
+	"unicode"
 
-	_ "github.com/mattn/go-sqlite3"
+	"github.com/mattn/go-sqlite3"
+	"golang.org/x/text/unicode/norm"
 )
+
+func init() {
+	sql.Register("sqlite3_custom", &sqlite3.SQLiteDriver{
+		ConnectHook: func(conn *sqlite3.SQLiteConn) error {
+			return conn.RegisterFunc("unaccent", unaccent, true)
+		},
+	})
+}
+
+func unaccent(v any) string {
+	if v == nil {
+		return ""
+	}
+	s, ok := v.(string)
+	if !ok {
+		s = fmt.Sprint(v)
+	}
+	t := norm.NFD.String(s)
+	var buf strings.Builder
+	for _, r := range t {
+		if !unicode.Is(unicode.Mn, r) {
+			buf.WriteRune(r)
+		}
+	}
+	res := buf.String()
+	res = strings.ReplaceAll(res, "ø", "o")
+	res = strings.ReplaceAll(res, "Ø", "O")
+	res = strings.ReplaceAll(res, "æ", "ae")
+	res = strings.ReplaceAll(res, "Æ", "AE")
+	res = strings.ReplaceAll(res, "ß", "ss")
+	return res
+}
 
 type DB struct {
 	sql *sql.DB
 }
 
 func Open(path string) (*DB, error) {
-	conn, err := sql.Open("sqlite3", path+"?_foreign_keys=on")
+	conn, err := sql.Open("sqlite3_custom", path+"?_foreign_keys=on")
 	if err != nil {
 		return nil, err
 	}

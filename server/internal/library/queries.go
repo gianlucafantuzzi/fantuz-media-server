@@ -186,31 +186,24 @@ func albumWhere(filters LibraryFilters) (string, []any) {
 
 	if filters.Query != "" {
 		clauses = append(clauses, `(
-			a.title LIKE ?
-			OR a.album_artist LIKE ?
-			OR EXISTS (
-				SELECT 1 FROM tracks t
-				LEFT JOIN track_keywords tk ON tk.track_id = t.id
-				LEFT JOIN keywords k ON k.id = tk.keyword_id
-				WHERE t.album_id = a.id
-				AND k.name LIKE ?
-			)
+			LOWER(unaccent(COALESCE(a.title, ''))) LIKE LOWER(unaccent(?))
+			OR LOWER(unaccent(COALESCE(a.album_artist, ''))) LIKE LOWER(unaccent(?))
 		)`)
 		like := likeArg(filters.Query)
-		args = append(args, like, like, like, like, like)
+		args = append(args, like, like)
 	}
 	addAlbumExists := func(column, value string) {
 		if value == "" {
 			return
 		}
-		clauses = append(clauses, fmt.Sprintf(`EXISTS (SELECT 1 FROM tracks t WHERE t.album_id = a.id AND t.%s = ?)`, column))
+		clauses = append(clauses, fmt.Sprintf(`EXISTS (SELECT 1 FROM tracks t WHERE t.album_id = a.id AND LOWER(unaccent(COALESCE(t.%s, ''))) = LOWER(unaccent(?)))`, column))
 		args = append(args, value)
 	}
 	addAlbumExists("genre", filters.Genre)
 	addAlbumExists("artist", filters.Artist)
 	addAlbumExists("composer", filters.Composer)
 	if filters.AlbumArtist != "" {
-		clauses = append(clauses, `a.album_artist = ?`)
+		clauses = append(clauses, `LOWER(unaccent(COALESCE(a.album_artist, ''))) = LOWER(unaccent(?))`)
 		args = append(args, filters.AlbumArtist)
 	}
 	if filters.Keyword != "" {
@@ -219,7 +212,7 @@ func albumWhere(filters LibraryFilters) (string, []any) {
 			FROM tracks t
 			JOIN track_keywords tk ON tk.track_id = t.id
 			JOIN keywords k ON k.id = tk.keyword_id
-			WHERE t.album_id = a.id AND k.name = ?
+			WHERE t.album_id = a.id AND LOWER(unaccent(COALESCE(k.name, ''))) = LOWER(unaccent(?))
 		)`)
 		args = append(args, filters.Keyword)
 	}
@@ -236,14 +229,14 @@ func trackWhere(filters LibraryFilters) (string, []any) {
 
 	if filters.Query != "" {
 		clauses = append(clauses, `(
-			t.title LIKE ?
-			OR t.artist LIKE ?
-			OR t.composer LIKE ?
+			LOWER(unaccent(COALESCE(t.title, ''))) LIKE LOWER(unaccent(?))
+			OR LOWER(unaccent(COALESCE(t.artist, ''))) LIKE LOWER(unaccent(?))
+			OR LOWER(unaccent(COALESCE(t.composer, ''))) LIKE LOWER(unaccent(?))
 			OR EXISTS (
 				SELECT 1
 				FROM track_keywords tk
 				JOIN keywords k ON k.id = tk.keyword_id
-				WHERE tk.track_id = t.id AND k.name LIKE ?
+				WHERE tk.track_id = t.id AND LOWER(unaccent(COALESCE(k.name, ''))) LIKE LOWER(unaccent(?))
 			)
 		)`)
 		like := likeArg(filters.Query)
@@ -253,14 +246,14 @@ func trackWhere(filters LibraryFilters) (string, []any) {
 		if value == "" {
 			return
 		}
-		clauses = append(clauses, fmt.Sprintf(`t.%s = ?`, column))
+		clauses = append(clauses, fmt.Sprintf(`LOWER(unaccent(COALESCE(t.%s, ''))) = LOWER(unaccent(?))`, column))
 		args = append(args, value)
 	}
 	addTrackClause("genre", filters.Genre)
 	addTrackClause("artist", filters.Artist)
 	addTrackClause("composer", filters.Composer)
 	if filters.AlbumArtist != "" {
-		clauses = append(clauses, `a.album_artist = ?`)
+		clauses = append(clauses, `LOWER(unaccent(COALESCE(a.album_artist, ''))) = LOWER(unaccent(?))`)
 		args = append(args, filters.AlbumArtist)
 	}
 	if filters.Keyword != "" {
@@ -268,7 +261,7 @@ func trackWhere(filters LibraryFilters) (string, []any) {
 			SELECT 1
 			FROM track_keywords tk
 			JOIN keywords k ON k.id = tk.keyword_id
-			WHERE tk.track_id = t.id AND k.name = ?
+			WHERE tk.track_id = t.id AND LOWER(unaccent(COALESCE(k.name, ''))) = LOWER(unaccent(?))
 		)`)
 		args = append(args, filters.Keyword)
 	}

@@ -165,3 +165,85 @@ func TestScanRemovesEmptyAlbums(t *testing.T) {
 	}
 }
 
+func TestUnaccentSearch(t *testing.T) {
+	dir := t.TempDir()
+	db, err := Open(filepath.Join(dir, "fantuz.db"))
+	if err != nil {
+		t.Fatalf("Open returned error: %v", err)
+	}
+	defer db.Close()
+
+	trackFile := filepath.Join(dir, "track.mp3")
+	if err := os.WriteFile(trackFile, []byte("track"), 0o644); err != nil {
+		t.Fatalf("write track: %v", err)
+	}
+
+	parser := &fakeParser{metadataByPath: map[string]TrackMetadata{
+		trackFile: {
+			Title:       "Mêxico",
+			Artist:      "Édith Piaf",
+			Album:       "Édit Piaf Best Of",
+			AlbumArtist: "Édith Piaf",
+		},
+	}}
+
+	scanner := Scanner{
+		DB:      db,
+		Parser:  parser,
+		Artwork: NewArtworkCache(filepath.Join(dir, ".artwork")),
+	}
+
+	if _, err := scanner.Scan(dir); err != nil {
+		t.Fatalf("Scan returned error: %v", err)
+	}
+
+	// 1. Search "mexico" (unaccented) matching track title "Mêxico"
+	tracks, err := db.ListTracks(LibraryFilters{Query: "mexico"})
+	if err != nil || len(tracks) != 1 {
+		t.Fatalf("search 'mexico' failed: err=%v, count=%d", err, len(tracks))
+	}
+
+	// 2. Search "edith piaf" (unaccented) matching album artist "Édith Piaf" and track artist "Édith Piaf"
+	tracks, err = db.ListTracks(LibraryFilters{Query: "edith piaf"})
+	if err != nil || len(tracks) != 1 {
+		t.Fatalf("search track 'edith piaf' failed: err=%v, count=%d", err, len(tracks))
+	}
+	albums, err := db.ListAlbums(LibraryFilters{Query: "edith piaf"})
+	if err != nil || len(albums) != 1 {
+		t.Fatalf("search album 'edith piaf' failed: err=%v, count=%d", err, len(albums))
+	}
+
+	// 3. Search "edit piaf" (unaccented) matching album title "Édit Piaf Best Of"
+	albums, err = db.ListAlbums(LibraryFilters{Query: "edit piaf"})
+	if err != nil || len(albums) != 1 {
+		t.Fatalf("search album 'edit piaf' failed: err=%v, count=%d", err, len(albums))
+	}
+}
+
+func TestUnaccentSearchWithNullFields(t *testing.T) {
+	dir := t.TempDir()
+	db, err := Open(filepath.Join(dir, "fantuz.db"))
+	if err != nil {
+		t.Fatalf("Open returned error: %v", err)
+	}
+	defer db.Close()
+
+	// Insert track with NULL album_id and missing optional fields
+	_, err = db.sql.Exec(`INSERT INTO tracks (file_path, title, artist) VALUES ('/orphan.mp3', 'Mêxico', 'Édith Piaf')`)
+	if err != nil {
+		t.Fatalf("insert orphan track: %v", err)
+	}
+
+	tracks, err := db.ListTracks(LibraryFilters{Query: "mexico"})
+	if err != nil || len(tracks) != 1 {
+		t.Fatalf("search 'mexico' with NULL fields failed: err=%v, count=%d", err, len(tracks))
+	}
+
+	albums, err := db.ListAlbums(LibraryFilters{Query: "mexico"})
+	if err != nil {
+		t.Fatalf("ListAlbums with NULL fields failed: %v", err)
+	}
+	_ = albums
+}
+
+

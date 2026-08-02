@@ -109,7 +109,18 @@ func TestLibraryAndPlaylistEndpoints(t *testing.T) {
 	if playlist.DurationSeconds != 150 || len(playlist.Tracks) != 2 {
 		t.Fatalf("playlist = %#v", playlist)
 	}
+
+	searchResp := request(server, http.MethodGet, "/api/library/search?q=First", nil)
+	if searchResp.Code != http.StatusOK {
+		t.Fatalf("search status = %d body = %s", searchResp.Code, searchResp.Body.String())
+	}
+	var searchResult map[string]any
+	if err := json.NewDecoder(searchResp.Body).Decode(&searchResult); err != nil {
+		t.Fatalf("decode search result: %v", err)
+	}
+	t.Logf("search result = %#v", searchResult)
 }
+
 
 func TestScanEndpointUsesConfiguredMediaPath(t *testing.T) {
 	server, _ := testServer(t)
