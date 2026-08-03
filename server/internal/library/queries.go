@@ -243,45 +243,29 @@ func albumWhere(filters LibraryFilters) (string, []any) {
 		if kw == "" {
 			continue
 		}
-		clauses = append(clauses, `EXISTS (SELECT 1 FROM tracks WHERE album_id = a.id) AND NOT EXISTS (
-			SELECT 1 FROM tracks t
-			WHERE t.album_id = a.id
-			AND NOT EXISTS (
-				SELECT 1 FROM track_keywords tk
-				JOIN keywords k ON k.id = tk.keyword_id
-				WHERE tk.track_id = t.id AND LOWER(unaccent(COALESCE(k.name, ''))) = LOWER(unaccent(?))
-			)
+		clauses = append(clauses, `EXISTS (
+			SELECT 1
+			FROM tracks t
+			JOIN track_keywords tk ON tk.track_id = t.id
+			JOIN keywords k ON k.id = tk.keyword_id
+			WHERE t.album_id = a.id AND LOWER(unaccent(COALESCE(k.name, ''))) = LOWER(unaccent(?))
 		)`)
 		args = append(args, kw)
 	}
 
-	if len(filters.ExcludeKeywords) > 0 {
-		var validExcludes []string
-		for _, kw := range filters.ExcludeKeywords {
-			kw = strings.TrimSpace(kw)
-			if kw != "" {
-				validExcludes = append(validExcludes, kw)
-			}
+	for _, kw := range filters.ExcludeKeywords {
+		kw = strings.TrimSpace(kw)
+		if kw == "" {
+			continue
 		}
-		if len(validExcludes) > 0 {
-			placeholders := make([]string, len(validExcludes))
-			for i, kw := range validExcludes {
-				placeholders[i] = "LOWER(unaccent(?))"
-				args = append(args, kw)
-			}
-			clauses = append(clauses, fmt.Sprintf(`NOT (
-				EXISTS (SELECT 1 FROM tracks WHERE album_id = a.id)
-				AND NOT EXISTS (
-					SELECT 1 FROM tracks t
-					WHERE t.album_id = a.id
-					AND NOT EXISTS (
-						SELECT 1 FROM track_keywords tk
-						JOIN keywords k ON k.id = tk.keyword_id
-						WHERE tk.track_id = t.id AND LOWER(unaccent(COALESCE(k.name, ''))) IN (%s)
-					)
-				)
-			)`, strings.Join(placeholders, ",")))
-		}
+		clauses = append(clauses, `NOT EXISTS (
+			SELECT 1
+			FROM tracks t
+			JOIN track_keywords tk ON tk.track_id = t.id
+			JOIN keywords k ON k.id = tk.keyword_id
+			WHERE t.album_id = a.id AND LOWER(unaccent(COALESCE(k.name, ''))) = LOWER(unaccent(?))
+		)`)
+		args = append(args, kw)
 	}
 
 	if len(clauses) == 0 {

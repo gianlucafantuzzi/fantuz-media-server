@@ -13,7 +13,7 @@ export const EditMetadataView: React.FC<EditMetadataViewProps> = ({ serverUrl })
 	const [albums, setAlbums] = useState<Album[]>([]);
 	const [tracks, setTracks] = useState<Track[]>([]);
 	const [allKeywords, setAllKeywords] = useState<string[]>([]);
-	const [loading, setLoading] = useState(false);
+	const [initialLoading, setInitialLoading] = useState(true);
 	const [error, setError] = useState<string | null>(null);
 
 	// Tab: Add/remove tags state
@@ -150,7 +150,6 @@ export const EditMetadataView: React.FC<EditMetadataViewProps> = ({ serverUrl })
 	};
 
 	const fetchAlbums = async () => {
-		setLoading(true);
 		setError(null);
 		try {
 			const params = new URLSearchParams();
@@ -166,9 +165,8 @@ export const EditMetadataView: React.FC<EditMetadataViewProps> = ({ serverUrl })
 			setAlbums(Array.isArray(albData) ? albData : []);
 		} catch (err: any) {
 			setError(err.message || 'Failed to fetch albums');
-			setAlbums([]);
 		} finally {
-			setLoading(false);
+			setInitialLoading(false);
 		}
 	};
 
@@ -865,7 +863,7 @@ export const EditMetadataView: React.FC<EditMetadataViewProps> = ({ serverUrl })
 						<h3 style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '16px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
 							Select Albums ({selectedAlbumIds.length} selected, {albums.length} matching)
 						</h3>
-						{loading ? (
+						{initialLoading ? (
 							<div className="loading-container">Loading albums...</div>
 						) : displayedAlbums.length === 0 ? (
 							<p className="metadata-text">No albums match the search criteria.</p>
@@ -1445,7 +1443,7 @@ export const EditMetadataView: React.FC<EditMetadataViewProps> = ({ serverUrl })
 							<h3 style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '16px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
 								Albums ({albums.length} matching)
 							</h3>
-							{loading ? (
+							{initialLoading ? (
 								<div className="loading-container">Loading albums...</div>
 							) : displayedAlbums.length === 0 ? (
 								<p className="metadata-text">No albums match the search criteria.</p>
@@ -1544,7 +1542,7 @@ export const EditMetadataView: React.FC<EditMetadataViewProps> = ({ serverUrl })
 							<h3 style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '16px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
 								Tracks
 							</h3>
-							{loading ? (
+							{initialLoading ? (
 								<div className="loading-container">Loading tracks...</div>
 							) : (() => {
 								const filtered = tracks.filter(t => {
