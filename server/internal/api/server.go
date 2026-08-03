@@ -55,6 +55,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("/api/reset", s.handleReset)
 	mux.HandleFunc("/api/library/search", s.handleLibrarySearch)
 	mux.HandleFunc("/api/library/albums", s.handleAlbums)
+	mux.HandleFunc("/api/library/albums/common-keywords", s.handleCommonKeywords)
 	mux.HandleFunc("/api/library/albums/", s.handleAlbum)
 	mux.HandleFunc("/api/library/albums/keywords", s.handleAlbumKeywords)
 	mux.HandleFunc("/api/library/albums/metadata", s.handleAlbumMetadataUpdate)
@@ -416,16 +417,66 @@ func (s *Server) broadcastScan(state string, result library.ScanResult, message 
 	return status
 }
 
+func parseCommaOrMultiple(values []string) []string {
+	var res []string
+	for _, val := range values {
+		parts := strings.Split(val, ",")
+		for _, p := range parts {
+			trimmed := strings.TrimSpace(p)
+			if trimmed != "" {
+				res = append(res, trimmed)
+			}
+		}
+	}
+	return res
+}
+
 func filtersFromQuery(r *http.Request) library.LibraryFilters {
 	query := r.URL.Query()
 	return library.LibraryFilters{
-		Query:       strings.TrimSpace(query.Get("q")),
-		Genre:       strings.TrimSpace(query.Get("genre")),
-		Artist:      strings.TrimSpace(query.Get("artist")),
-		AlbumArtist: strings.TrimSpace(query.Get("album_artist")),
-		Composer:    strings.TrimSpace(query.Get("composer")),
-		Keyword:     strings.TrimSpace(query.Get("keyword")),
+		Query:             strings.TrimSpace(query.Get("q")),
+		Genre:             strings.TrimSpace(query.Get("genre")),
+		Artist:            strings.TrimSpace(query.Get("artist")),
+		AlbumArtist:       strings.TrimSpace(query.Get("album_artist")),
+		Composer:          strings.TrimSpace(query.Get("composer")),
+		Keyword:           strings.TrimSpace(query.Get("keyword")),
+		FilterKeywords:    parseCommaOrMultiple(query["filter_keywords"]),
+		ExcludeKeywords:   parseCommaOrMultiple(query["exclude_keywords"]),
+		SearchAlbumsScope: query.Get("scope") == "search_albums",
 	}
+}
+
+func (s *Server) handleCommonKeywords(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet && r.Method != http.MethodPost {
+		methodNotAllowed(w)
+		return
+	}
+
+	var albumIDs []int64
+	if r.Method == http.MethodGet {
+		param := r.URL.Query().Get("album_ids")
+		if param != "" {
+			for _, idStr := range strings.Split(param, ",") {
+				if id, err := strconv.ParseInt(strings.TrimSpace(idStr), 10, 64); err == nil && id > 0 {
+					albumIDs = append(albumIDs, id)
+				}
+			}
+		}
+	} else {
+		var body struct {
+			AlbumIDs []int64 `json:"album_ids"`
+		}
+		if decodeJSON(w, r, &body) {
+			albumIDs = body.AlbumIDs
+		}
+	}
+
+	keywords, err := s.db.CommonKeywords(albumIDs)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, keywords)
 }
 
 func writePlaylistResponse(w http.ResponseWriter, playlist library.Playlist, err error) {

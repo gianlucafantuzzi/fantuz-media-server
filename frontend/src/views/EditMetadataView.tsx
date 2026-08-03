@@ -136,130 +136,109 @@ export const EditMetadataView: React.FC<EditMetadataViewProps> = ({ serverUrl })
 		}
 	}, [activeTab, editingAlbum, editingTrack]);
 
-	const fetchData = async () => {
-		setLoading(true);
-		setError(null);
+	const [commonKeywords, setCommonKeywords] = useState<string[]>([]);
+	const [albumCommonKeywords, setAlbumCommonKeywords] = useState<string[]>([]);
+
+	const fetchKeywords = async () => {
 		try {
-			// Fetch keywords
 			const kwRes = await fetch(`${serverUrl}/api/library/keywords`);
 			const kwData = await kwRes.json();
 			setAllKeywords(kwData);
-
-			// Fetch albums
-			const albRes = await fetch(`${serverUrl}/api/library/albums`);
-			const albData = await albRes.json();
-			setAlbums(albData);
-
-			// Fetch tracks
-			const trkRes = await fetch(`${serverUrl}/api/library/tracks`);
-			const trkData = await trkRes.json();
-			setTracks(trkData);
 		} catch (err: any) {
-			setError(err.message || 'Failed to fetch library data');
+			setError(err.message || 'Failed to fetch keywords');
+		}
+	};
+
+	const fetchAlbums = async () => {
+		setLoading(true);
+		setError(null);
+		try {
+			const params = new URLSearchParams();
+			params.set('scope', 'search_albums');
+			if (searchQuery.trim()) {
+				params.set('q', searchQuery.trim());
+			}
+			filterKeywords.forEach(kw => params.append('filter_keywords', kw));
+			excludedKeywords.forEach(kw => params.append('exclude_keywords', kw));
+
+			const albRes = await fetch(`${serverUrl}/api/library/albums?${params.toString()}`);
+			const albData = await albRes.json();
+			setAlbums(Array.isArray(albData) ? albData : []);
+		} catch (err: any) {
+			setError(err.message || 'Failed to fetch albums');
+			setAlbums([]);
 		} finally {
 			setLoading(false);
 		}
 	};
 
+	const fetchTracks = async () => {
+		try {
+			const trkUrl = trackSearchQuery.trim()
+				? `${serverUrl}/api/library/tracks?q=${encodeURIComponent(trackSearchQuery.trim())}`
+				: `${serverUrl}/api/library/tracks`;
+			const trkRes = await fetch(trkUrl);
+			const trkData = await trkRes.json();
+			setTracks(Array.isArray(trkData) ? trkData : []);
+		} catch (err: any) {
+			setError(err.message || 'Failed to fetch tracks');
+			setTracks([]);
+		}
+	};
+
 	useEffect(() => {
-		fetchData();
+		fetchKeywords();
 	}, [serverUrl]);
 
-	// Filter albums based on Search query, Filter keywords & Exclude keywords
-	const getFilteredAlbums = () => {
-		let filtered = albums;
+	useEffect(() => {
+		fetchAlbums();
+	}, [serverUrl, searchQuery, filterKeywords, excludedKeywords]);
 
-		// 1. Search filter
-		if (searchQuery.trim()) {
-			const query = searchQuery.toLowerCase().trim();
-			filtered = filtered.filter(album => {
-				const albumTitle = (album.title || '').toLowerCase();
-				const albumArtist = (album.album_artist || '').toLowerCase();
+	useEffect(() => {
+		fetchTracks();
+	}, [serverUrl, trackSearchQuery]);
 
-				// Get album tracks
-				const albumTracks = tracks.filter(t => t.album_id === album.id);
-				const matchesTrack = albumTracks.some(track => {
-					const title = (track.title || '').toLowerCase();
-					const artist = (track.artist || '').toLowerCase();
-					const composer = (track.composer || '').toLowerCase();
-					const kws = track.keywords || [];
-					return title.includes(query) ||
-						artist.includes(query) ||
-						composer.includes(query) ||
-						kws.some(k => k.toLowerCase().includes(query));
-				});
-
-				return albumTitle.includes(query) || albumArtist.includes(query) || matchesTrack;
-			});
+	useEffect(() => {
+		if (selectedAlbumIds.length === 0) {
+			setCommonKeywords([]);
+			return;
 		}
+		const fetchSelectedCommon = async () => {
+			try {
+				const res = await fetch(`${serverUrl}/api/library/albums/common-keywords?album_ids=${selectedAlbumIds.join(',')}`);
+				const data = await res.json();
+				setCommonKeywords(data);
+			} catch (err) {
+				console.error('Failed to fetch common keywords', err);
+			}
+		};
+		fetchSelectedCommon();
+	}, [serverUrl, selectedAlbumIds]);
 
-		// 2. Filter by tags
-		// Only featuring albums for which ALL tracks contain all of the selected keywords
-		if (filterKeywords.length > 0) {
-			filtered = filtered.filter(album => {
-				const albumTracks = tracks.filter(t => t.album_id === album.id);
-				if (albumTracks.length === 0) return false;
-
-				return albumTracks.every(track => {
-					const trackKws = track.keywords || [];
-					return filterKeywords.every(kw => trackKws.includes(kw));
-				});
-			});
+	useEffect(() => {
+		if (!editingAlbum) {
+			setAlbumCommonKeywords([]);
+			return;
 		}
+		const fetchAlbumCommon = async () => {
+			try {
+				const res = await fetch(`${serverUrl}/api/library/albums/common-keywords?album_ids=${editingAlbum.id}`);
+				const data = await res.json();
+				setAlbumCommonKeywords(data);
+			} catch (err) {
+				console.error('Failed to fetch album common keywords', err);
+			}
+		};
+		fetchAlbumCommon();
+	}, [serverUrl, editingAlbum]);
 
-		// 3. Exclude keywords filter
-		// Exclude all albums for which ALL tracks contain at least one of the selected keywords
-		if (excludedKeywords.length > 0) {
-			filtered = filtered.filter(album => {
-				const albumTracks = tracks.filter(t => t.album_id === album.id);
-				if (albumTracks.length === 0) return true;
+	const displayedAlbums = albums.slice(0, albumLimit);
 
-				const allTracksHaveExcludeKeyword = albumTracks.every(track => {
-					const trackKws = track.keywords || [];
-					return trackKws.some(kw => excludedKeywords.includes(kw));
-				});
-
-				return !allTracksHaveExcludeKeyword;
-			});
-		}
-
-		return filtered;
+	const refreshData = async () => {
+		await fetchKeywords();
+		await fetchAlbums();
+		await fetchTracks();
 	};
-
-	const filteredAlbums = getFilteredAlbums();
-	const displayedAlbums = filteredAlbums.slice(0, albumLimit);
-
-	// Get tracks of selected albums
-	const getSelectedTracks = () => {
-		return tracks.filter(t => t.album_id && selectedAlbumIds.includes(t.album_id));
-	};
-
-	const selectedTracks = getSelectedTracks();
-
-	// Common keywords: keywords present in all tracks of all selected albums
-	const getCommonKeywords = () => {
-		if (selectedAlbumIds.length === 0 || selectedTracks.length === 0) {
-			return [];
-		}
-		const firstTrackKws = selectedTracks[0].keywords || [];
-		return firstTrackKws.filter(kw =>
-			selectedTracks.every(t => t.keywords && t.keywords.includes(kw))
-		);
-	};
-
-	const commonKeywords = getCommonKeywords();
-
-	const getAlbumCommonKeywords = () => {
-		if (!editingAlbum) return [];
-		const albumTracks = tracks.filter(t => t.album_id === editingAlbum.id);
-		if (albumTracks.length === 0) return [];
-		const firstTrackKws = albumTracks[0].keywords || [];
-		return firstTrackKws.filter(kw =>
-			albumTracks.every(t => t.keywords && t.keywords.includes(kw))
-		);
-	};
-
-	const albumCommonKeywords = getAlbumCommonKeywords();
 
 	const handleToggleFilterKeyword = (kw: string) => {
 		if (filterKeywords.includes(kw)) {
@@ -337,7 +316,7 @@ export const EditMetadataView: React.FC<EditMetadataViewProps> = ({ serverUrl })
 			}
 
 			await triggerScan();
-			await fetchData();
+			await refreshData();
 		} catch (err: any) {
 			alert(err.message);
 		} finally {
@@ -380,7 +359,7 @@ export const EditMetadataView: React.FC<EditMetadataViewProps> = ({ serverUrl })
 			}
 
 			await triggerScan();
-			await fetchData();
+			await refreshData();
 
 			// Fetch updated track details
 			const updatedTrackRes = await fetch(`${serverUrl}/api/library/tracks`);
@@ -399,7 +378,7 @@ export const EditMetadataView: React.FC<EditMetadataViewProps> = ({ serverUrl })
 
 	const handleBackFromEditTrack = async () => {
 		setEditingTrack(null);
-		await fetchData();
+		await refreshData();
 	};
 
 	// Save tag edits and trigger scan
@@ -434,7 +413,7 @@ export const EditMetadataView: React.FC<EditMetadataViewProps> = ({ serverUrl })
 
 				// Trigger DB scan and refetch data
 				triggerScan();
-				await fetchData();
+				await refreshData();
 
 				// Fetch updated track details
 				const updatedTrackRes = await fetch(`${serverUrl}/api/library/tracks`);
@@ -461,7 +440,7 @@ export const EditMetadataView: React.FC<EditMetadataViewProps> = ({ serverUrl })
 
 				// Trigger DB scan and refetch data
 				triggerScan();
-				await fetchData();
+				await refreshData();
 				setSelectedAlbumIds([]);
 			}
 
@@ -496,7 +475,7 @@ export const EditMetadataView: React.FC<EditMetadataViewProps> = ({ serverUrl })
 
 				// Trigger DB scan and refetch data
 				triggerScan();
-				await fetchData();
+				await refreshData();
 
 				// Fetch updated track details
 				const updatedTrackRes = await fetch(`${serverUrl}/api/library/tracks`);
@@ -526,7 +505,7 @@ export const EditMetadataView: React.FC<EditMetadataViewProps> = ({ serverUrl })
 
 				// Trigger DB scan and refetch data
 				triggerScan();
-				await fetchData();
+				await refreshData();
 				setSelectedAlbumIds([]);
 
 				setSelectedKeywordsForRemoval([]);
@@ -884,7 +863,7 @@ export const EditMetadataView: React.FC<EditMetadataViewProps> = ({ serverUrl })
 					{/* Album Cards Grid */}
 					<div style={{ marginBottom: '40px' }}>
 						<h3 style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '16px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-							Select Albums ({selectedAlbumIds.length} selected, {filteredAlbums.length} matching)
+							Select Albums ({selectedAlbumIds.length} selected, {albums.length} matching)
 						</h3>
 						{loading ? (
 							<div className="loading-container">Loading albums...</div>
@@ -957,7 +936,7 @@ export const EditMetadataView: React.FC<EditMetadataViewProps> = ({ serverUrl })
 							</div>
 						)}
 
-						{filteredAlbums.length > albumLimit && (
+						{albums.length > albumLimit && (
 							<div style={{ display: 'flex', justifyContent: 'center', marginTop: '32px' }}>
 								<button
 									className="btn-primary"
@@ -1464,7 +1443,7 @@ export const EditMetadataView: React.FC<EditMetadataViewProps> = ({ serverUrl })
 						{/* Album Cards Grid */}
 						<div style={{ marginBottom: '40px' }}>
 							<h3 style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '16px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-								Albums ({filteredAlbums.length} matching)
+								Albums ({albums.length} matching)
 							</h3>
 							{loading ? (
 								<div className="loading-container">Loading albums...</div>
@@ -1512,7 +1491,7 @@ export const EditMetadataView: React.FC<EditMetadataViewProps> = ({ serverUrl })
 								</div>
 							)}
 
-							{filteredAlbums.length > albumLimit && (
+							{albums.length > albumLimit && (
 								<div style={{ display: 'flex', justifyContent: 'center', marginTop: '32px' }}>
 									<button
 										className="btn-primary"

@@ -51,12 +51,15 @@ type Track struct {
 }
 
 type LibraryFilters struct {
-	Query       string
-	Genre       string
-	Artist      string
-	AlbumArtist string
-	Composer    string
-	Keyword     string
+	Query             string
+	Genre             string
+	Artist            string
+	AlbumArtist       string
+	Composer          string
+	Keyword           string
+	FilterKeywords    []string
+	ExcludeKeywords   []string
+	SearchAlbumsScope bool
 }
 
 type Playlist struct {

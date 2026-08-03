@@ -22,7 +22,7 @@ func (db *DB) ListAlbums(filters LibraryFilters) ([]Album, error) {
 	}
 	defer rows.Close()
 
-	var albums []Album
+	albums := []Album{}
 	for rows.Next() {
 		var album Album
 		if err := rows.Scan(&album.ID, &album.Title, &album.AlbumArtist, &album.ArtworkPath, &album.DurationSeconds); err != nil {
@@ -111,7 +111,7 @@ func (db *DB) queryTracks(query string, args ...any) ([]Track, error) {
 	}
 	defer rows.Close()
 
-	var tracks []Track
+	tracks := []Track{}
 	for rows.Next() {
 		track, err := scanTrack(rows)
 		if err != nil {
@@ -185,12 +185,33 @@ func albumWhere(filters LibraryFilters) (string, []any) {
 	var args []any
 
 	if filters.Query != "" {
-		clauses = append(clauses, `(
-			LOWER(unaccent(COALESCE(a.title, ''))) LIKE LOWER(unaccent(?))
-			OR LOWER(unaccent(COALESCE(a.album_artist, ''))) LIKE LOWER(unaccent(?))
-		)`)
-		like := likeArg(filters.Query)
-		args = append(args, like, like)
+		if filters.SearchAlbumsScope {
+			clauses = append(clauses, `(
+				LOWER(unaccent(COALESCE(a.title, ''))) LIKE LOWER(unaccent(?))
+				OR LOWER(unaccent(COALESCE(a.album_artist, ''))) LIKE LOWER(unaccent(?))
+				OR EXISTS (
+					SELECT 1 FROM tracks t
+					LEFT JOIN track_keywords tk ON tk.track_id = t.id
+					LEFT JOIN keywords k ON k.id = tk.keyword_id
+					WHERE t.album_id = a.id
+					AND (
+						LOWER(unaccent(COALESCE(t.title, ''))) LIKE LOWER(unaccent(?))
+						OR LOWER(unaccent(COALESCE(t.artist, ''))) LIKE LOWER(unaccent(?))
+						OR LOWER(unaccent(COALESCE(t.composer, ''))) LIKE LOWER(unaccent(?))
+						OR LOWER(unaccent(COALESCE(k.name, ''))) LIKE LOWER(unaccent(?))
+					)
+				)
+			)`)
+			like := likeArg(filters.Query)
+			args = append(args, like, like, like, like, like, like)
+		} else {
+			clauses = append(clauses, `(
+				LOWER(unaccent(COALESCE(a.title, ''))) LIKE LOWER(unaccent(?))
+				OR LOWER(unaccent(COALESCE(a.album_artist, ''))) LIKE LOWER(unaccent(?))
+			)`)
+			like := likeArg(filters.Query)
+			args = append(args, like, like)
+		}
 	}
 	addAlbumExists := func(column, value string) {
 		if value == "" {
@@ -215,6 +236,52 @@ func albumWhere(filters LibraryFilters) (string, []any) {
 			WHERE t.album_id = a.id AND LOWER(unaccent(COALESCE(k.name, ''))) = LOWER(unaccent(?))
 		)`)
 		args = append(args, filters.Keyword)
+	}
+
+	for _, kw := range filters.FilterKeywords {
+		kw = strings.TrimSpace(kw)
+		if kw == "" {
+			continue
+		}
+		clauses = append(clauses, `EXISTS (SELECT 1 FROM tracks WHERE album_id = a.id) AND NOT EXISTS (
+			SELECT 1 FROM tracks t
+			WHERE t.album_id = a.id
+			AND NOT EXISTS (
+				SELECT 1 FROM track_keywords tk
+				JOIN keywords k ON k.id = tk.keyword_id
+				WHERE tk.track_id = t.id AND LOWER(unaccent(COALESCE(k.name, ''))) = LOWER(unaccent(?))
+			)
+		)`)
+		args = append(args, kw)
+	}
+
+	if len(filters.ExcludeKeywords) > 0 {
+		var validExcludes []string
+		for _, kw := range filters.ExcludeKeywords {
+			kw = strings.TrimSpace(kw)
+			if kw != "" {
+				validExcludes = append(validExcludes, kw)
+			}
+		}
+		if len(validExcludes) > 0 {
+			placeholders := make([]string, len(validExcludes))
+			for i, kw := range validExcludes {
+				placeholders[i] = "LOWER(unaccent(?))"
+				args = append(args, kw)
+			}
+			clauses = append(clauses, fmt.Sprintf(`NOT (
+				EXISTS (SELECT 1 FROM tracks WHERE album_id = a.id)
+				AND NOT EXISTS (
+					SELECT 1 FROM tracks t
+					WHERE t.album_id = a.id
+					AND NOT EXISTS (
+						SELECT 1 FROM track_keywords tk
+						JOIN keywords k ON k.id = tk.keyword_id
+						WHERE tk.track_id = t.id AND LOWER(unaccent(COALESCE(k.name, ''))) IN (%s)
+					)
+				)
+			)`, strings.Join(placeholders, ",")))
+		}
 	}
 
 	if len(clauses) == 0 {
@@ -327,4 +394,50 @@ func (db *DB) GetTracks(ids []int64) ([]Track, error) {
 	return db.queryTracks(query, args...)
 }
 
+func (db *DB) CommonKeywords(albumIDs []int64) ([]string, error) {
+	if len(albumIDs) == 0 {
+		return []string{}, nil
+	}
+	placeholders := make([]string, len(albumIDs))
+	args := make([]any, len(albumIDs))
+	for i, id := range albumIDs {
+		placeholders[i] = "?"
+		args[i] = id
+	}
+
+	query := fmt.Sprintf(`
+		SELECT k.name
+		FROM keywords k
+		JOIN track_keywords tk ON tk.keyword_id = k.id
+		JOIN tracks t ON t.id = tk.track_id
+		WHERE t.album_id IN (%s)
+		GROUP BY k.id, k.name
+		HAVING COUNT(DISTINCT t.id) = (
+			SELECT COUNT(*) FROM tracks WHERE album_id IN (%s)
+		)
+		ORDER BY k.name ASC
+	`, strings.Join(placeholders, ","), strings.Join(placeholders, ","))
+
+	args = append(args, args...)
+	rows, err := db.sql.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var result []string
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return nil, err
+		}
+		result = append(result, name)
+	}
+	if result == nil {
+		result = []string{}
+	}
+	return result, rows.Err()
+}
+
 var ErrNotFound = errors.New("not found")
+

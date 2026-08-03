@@ -246,4 +246,52 @@ func TestUnaccentSearchWithNullFields(t *testing.T) {
 	_ = albums
 }
 
+func TestFilterAndCommonKeywords(t *testing.T) {
+	dir := t.TempDir()
+	db, err := Open(filepath.Join(dir, "fantuz.db"))
+	if err != nil {
+		t.Fatalf("Open returned error: %v", err)
+	}
+	defer db.Close()
+
+	trackFile1 := filepath.Join(dir, "t1.mp3")
+	trackFile2 := filepath.Join(dir, "t2.mp3")
+	_ = os.WriteFile(trackFile1, []byte("1"), 0o644)
+	_ = os.WriteFile(trackFile2, []byte("2"), 0o644)
+
+	parser := &fakeParser{metadataByPath: map[string]TrackMetadata{
+		trackFile1: {Title: "T1", Album: "Album A", Keywords: []string{"Live", "Pop"}},
+		trackFile2: {Title: "T2", Album: "Album B", Keywords: []string{"Live", "Rock"}},
+	}}
+
+	scanner := Scanner{DB: db, Parser: parser, Artwork: NewArtworkCache(filepath.Join(dir, ".artwork"))}
+	if _, err := scanner.Scan(dir); err != nil {
+		t.Fatalf("Scan: %v", err)
+	}
+
+	// Test FilterKeywords: Live keyword matches both Album A and Album B
+	albs, err := db.ListAlbums(LibraryFilters{FilterKeywords: []string{"Live"}})
+	if err != nil || len(albs) != 2 {
+		t.Fatalf("FilterKeywords Live failed: err=%v, count=%d", err, len(albs))
+	}
+
+	// Test FilterKeywords: Pop keyword matches only Album A
+	albs, err = db.ListAlbums(LibraryFilters{FilterKeywords: []string{"Pop"}})
+	if err != nil || len(albs) != 1 || albs[0].Title != "Album A" {
+		t.Fatalf("FilterKeywords Pop failed: err=%v, count=%d", err, len(albs))
+	}
+
+	// Test ExcludeKeywords: Pop excludes Album A, returns Album B
+	albs, err = db.ListAlbums(LibraryFilters{ExcludeKeywords: []string{"Pop"}})
+	if err != nil || len(albs) != 1 || albs[0].Title != "Album B" {
+		t.Fatalf("ExcludeKeywords Pop failed: err=%v, count=%d", err, len(albs))
+	}
+
+	// Test CommonKeywords for Album A and Album B
+	common, err := db.CommonKeywords([]int64{1, 2})
+	if err != nil || len(common) != 1 || common[0] != "Live" {
+		t.Fatalf("CommonKeywords failed: err=%v, common=%#v", err, common)
+	}
+}
+
 

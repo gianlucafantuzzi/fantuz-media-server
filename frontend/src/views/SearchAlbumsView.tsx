@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import type { Album, Track } from '../services/playerService';
+import type { Album } from '../services/playerService';
 import { formatDuration } from './SearchView';
 
 interface SearchAlbumsViewProps {
@@ -9,7 +9,6 @@ interface SearchAlbumsViewProps {
 
 export const SearchAlbumsView: React.FC<SearchAlbumsViewProps> = ({ serverUrl, onSelectAlbum }) => {
   const [albums, setAlbums] = useState<Album[]>([]);
-  const [tracks, setTracks] = useState<Track[]>([]);
   const [allKeywords, setAllKeywords] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -20,98 +19,49 @@ export const SearchAlbumsView: React.FC<SearchAlbumsViewProps> = ({ serverUrl, o
   const [excludedKeywords, setExcludedKeywords] = useState<string[]>([]);
   const [albumLimit, setAlbumLimit] = useState(20);
 
-  const fetchData = async () => {
-    setLoading(true);
-    setError(null);
+  const fetchKeywords = async () => {
     try {
-      // Fetch keywords
       const kwRes = await fetch(`${serverUrl}/api/library/keywords`);
       const kwData = await kwRes.json();
       setAllKeywords(kwData);
-
-      // Fetch albums
-      const albRes = await fetch(`${serverUrl}/api/library/albums`);
-      const albData = await albRes.json();
-      setAlbums(albData);
-
-      // Fetch tracks
-      const trkRes = await fetch(`${serverUrl}/api/library/tracks`);
-      const trkData = await trkRes.json();
-      setTracks(trkData);
     } catch (err: any) {
-      setError(err.message || 'Failed to fetch library data');
+      setError(err.message || 'Failed to fetch keywords');
+    }
+  };
+
+  const fetchAlbums = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const params = new URLSearchParams();
+      params.set('scope', 'search_albums');
+      if (searchQuery.trim()) {
+        params.set('q', searchQuery.trim());
+      }
+      filterKeywords.forEach(kw => params.append('filter_keywords', kw));
+      excludedKeywords.forEach(kw => params.append('exclude_keywords', kw));
+
+      const albRes = await fetch(`${serverUrl}/api/library/albums?${params.toString()}`);
+      const albData = await albRes.json();
+      setAlbums(Array.isArray(albData) ? albData : []);
+    } catch (err: any) {
+      setError(err.message || 'Failed to fetch albums');
+      setAlbums([]);
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchData();
+    fetchKeywords();
   }, [serverUrl]);
 
-  // Filter albums based on Search query, Filter keywords & Exclude keywords
-  const getFilteredAlbums = () => {
-    let filtered = albums;
+  useEffect(() => {
+    fetchAlbums();
+  }, [serverUrl, searchQuery, filterKeywords, excludedKeywords]);
 
-    // 1. Search filter
-    if (searchQuery.trim()) {
-      const query = searchQuery.toLowerCase().trim();
-      filtered = filtered.filter(album => {
-        const albumTitle = (album.title || '').toLowerCase();
-        const albumArtist = (album.album_artist || '').toLowerCase();
-
-        // Get album tracks
-        const albumTracks = tracks.filter(t => t.album_id === album.id);
-        const matchesTrack = albumTracks.some(track => {
-          const title = (track.title || '').toLowerCase();
-          const artist = (track.artist || '').toLowerCase();
-          const composer = (track.composer || '').toLowerCase();
-          const kws = track.keywords || [];
-          return title.includes(query) ||
-            artist.includes(query) ||
-            composer.includes(query) ||
-            kws.some(k => k.toLowerCase().includes(query));
-        });
-
-        return albumTitle.includes(query) || albumArtist.includes(query) || matchesTrack;
-      });
-    }
-
-    // 2. Filter by tags
-    // Only featuring albums for which ALL tracks contain all of the selected keywords
-    if (filterKeywords.length > 0) {
-      filtered = filtered.filter(album => {
-        const albumTracks = tracks.filter(t => t.album_id === album.id);
-        if (albumTracks.length === 0) return false;
-
-        return albumTracks.every(track => {
-          const trackKws = track.keywords || [];
-          return filterKeywords.every(kw => trackKws.includes(kw));
-        });
-      });
-    }
-
-    // 3. Exclude keywords filter
-    // Exclude all albums for which ALL tracks contain at least one of the selected keywords
-    if (excludedKeywords.length > 0) {
-      filtered = filtered.filter(album => {
-        const albumTracks = tracks.filter(t => t.album_id === album.id);
-        if (albumTracks.length === 0) return true;
-
-        const allTracksHaveExcludeKeyword = albumTracks.every(track => {
-          const trackKws = track.keywords || [];
-          return trackKws.some(kw => excludedKeywords.includes(kw));
-        });
-
-        return !allTracksHaveExcludeKeyword;
-      });
-    }
-
-    return filtered;
-  };
-
-  const filteredAlbums = getFilteredAlbums();
-  const displayedAlbums = filteredAlbums.slice(0, albumLimit);
+  const currentAlbums = Array.isArray(albums) ? albums : [];
+  const displayedAlbums = currentAlbums.slice(0, albumLimit);
 
   const handleToggleFilterKeyword = (kw: string) => {
     if (filterKeywords.includes(kw)) {
@@ -241,7 +191,7 @@ export const SearchAlbumsView: React.FC<SearchAlbumsViewProps> = ({ serverUrl, o
       {/* Album Cards Grid */}
       <div style={{ marginBottom: '40px' }}>
         <h3 style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '16px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-          Albums ({filteredAlbums.length} matching)
+          Albums ({currentAlbums.length} matching)
         </h3>
         {loading ? (
           <div className="loading-container">Loading albums...</div>
@@ -289,7 +239,7 @@ export const SearchAlbumsView: React.FC<SearchAlbumsViewProps> = ({ serverUrl, o
           </div>
         )}
 
-        {filteredAlbums.length > albumLimit && (
+        {currentAlbums.length > albumLimit && (
           <div style={{ display: 'flex', justifyContent: 'center', marginTop: '32px' }}>
             <button
               className="btn-primary"
