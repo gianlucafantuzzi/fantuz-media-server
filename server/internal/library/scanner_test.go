@@ -294,4 +294,60 @@ func TestFilterAndCommonKeywords(t *testing.T) {
 	}
 }
 
+func TestScanRemovesDeletedTracks(t *testing.T) {
+	dir := t.TempDir()
+	db, err := Open(filepath.Join(dir, "fantuz.db"))
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer db.Close()
+
+	trackFile1 := filepath.Join(dir, "track1.mp3")
+	trackFile2 := filepath.Join(dir, "track2.mp3")
+	if err := os.WriteFile(trackFile1, []byte("1"), 0o644); err != nil {
+		t.Fatalf("write track1: %v", err)
+	}
+	if err := os.WriteFile(trackFile2, []byte("2"), 0o644); err != nil {
+		t.Fatalf("write track2: %v", err)
+	}
+
+	parser := &fakeParser{metadataByPath: map[string]TrackMetadata{
+		trackFile1: {Title: "Track One", Album: "Album A", AlbumArtist: "Artist A"},
+		trackFile2: {Title: "Track Two", Album: "Album B", AlbumArtist: "Artist B"},
+	}}
+
+	scanner := Scanner{DB: db, Parser: parser, Artwork: NewArtworkCache(filepath.Join(dir, ".artwork"))}
+	if _, err := scanner.Scan(dir); err != nil {
+		t.Fatalf("First scan: %v", err)
+	}
+
+	tracks, err := db.ListTracks(LibraryFilters{})
+	if err != nil || len(tracks) != 2 {
+		t.Fatalf("Expected 2 tracks after first scan, got: %d, err: %v", len(tracks), err)
+	}
+
+	// Delete track1 from disk
+	if err := os.Remove(trackFile1); err != nil {
+		t.Fatalf("remove trackFile1: %v", err)
+	}
+
+	// Re-scan directory
+	if _, err := scanner.Scan(dir); err != nil {
+		t.Fatalf("Second scan: %v", err)
+	}
+
+	// Verify track1 is removed from DB
+	tracks, err = db.ListTracks(LibraryFilters{})
+	if err != nil || len(tracks) != 1 || tracks[0].Title != "Track Two" {
+		t.Fatalf("Expected 1 track ('Track Two') after second scan, got: %#v, err: %v", tracks, err)
+	}
+
+	// Verify empty album for track1 was removed
+	albums, err := db.ListAlbums(LibraryFilters{})
+	if err != nil || len(albums) != 1 || albums[0].Title != "Album B" {
+		t.Fatalf("Expected 1 album ('Album B') after second scan, got: %#v, err: %v", albums, err)
+	}
+}
+
+
 

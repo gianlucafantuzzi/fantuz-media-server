@@ -145,6 +145,11 @@ func (db *DB) RecalculateAlbumDurations(albumIDs []int64) error {
 	return tx.Commit()
 }
 
+func (db *DB) DeleteTrack(id int64) error {
+	_, err := db.sql.Exec(`DELETE FROM tracks WHERE id = ?`, id)
+	return err
+}
+
 func (db *DB) RemoveEmptyAlbums() error {
 	_, err := db.sql.Exec(`
 		DELETE FROM albums

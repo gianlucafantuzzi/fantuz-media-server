@@ -29,6 +29,7 @@ func NewScanner(db *DB, artworkDir string) Scanner {
 func (s Scanner) Scan(root string) (ScanResult, error) {
 	result := ScanResult{}
 	affectedAlbums := make([]int64, 0)
+	foundPaths := make(map[string]bool)
 
 	absoluteRoot, err := filepath.Abs(root)
 	if err != nil {
@@ -43,6 +44,8 @@ func (s Scanner) Scan(root string) (ScanResult, error) {
 		if entry.IsDir() || !isAudioFile(path) {
 			return nil
 		}
+
+		foundPaths[path] = true
 
 		info, err := entry.Info()
 		if err != nil {
@@ -85,6 +88,27 @@ func (s Scanner) Scan(root string) (ScanResult, error) {
 	if err != nil {
 		return result, err
 	}
+
+	// Remove tracks from DB whose files were deleted/missing under absoluteRoot
+	existingTracks, err := s.DB.ListTracks(LibraryFilters{})
+	if err != nil {
+		return result, err
+	}
+
+	for _, track := range existingTracks {
+		rel, err := filepath.Rel(absoluteRoot, track.FilePath)
+		if err == nil && !strings.HasPrefix(rel, "..") && rel != ".." {
+			if !foundPaths[track.FilePath] {
+				if err := s.DB.DeleteTrack(track.ID); err != nil {
+					return result, err
+				}
+				if track.AlbumID != nil {
+					affectedAlbums = append(affectedAlbums, *track.AlbumID)
+				}
+			}
+		}
+	}
+
 	if err := s.DB.RemoveEmptyAlbums(); err != nil {
 		return result, err
 	}
