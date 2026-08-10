@@ -13,11 +13,47 @@ export const SearchAlbumsView: React.FC<SearchAlbumsViewProps> = ({ serverUrl, o
   const [initialLoading, setInitialLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Filters state
-  const [searchQuery, setSearchQuery] = useState('');
-  const [filterKeywords, setFilterKeywords] = useState<string[]>([]);
-  const [excludedKeywords, setExcludedKeywords] = useState<string[]>([]);
-  const [albumLimit, setAlbumLimit] = useState(20);
+  // Filters state restored from sessionStorage if available
+  const [searchQuery, setSearchQuery] = useState(() => {
+    try {
+      const saved = sessionStorage.getItem('searchAlbumsState');
+      if (saved) return JSON.parse(saved).searchQuery || '';
+    } catch (e) {}
+    return '';
+  });
+
+  const [filterKeywords, setFilterKeywords] = useState<string[]>(() => {
+    try {
+      const saved = sessionStorage.getItem('searchAlbumsState');
+      if (saved) return JSON.parse(saved).filterKeywords || [];
+    } catch (e) {}
+    return [];
+  });
+
+  const [excludedKeywords, setExcludedKeywords] = useState<string[]>(() => {
+    try {
+      const saved = sessionStorage.getItem('searchAlbumsState');
+      if (saved) return JSON.parse(saved).excludedKeywords || [];
+    } catch (e) {}
+    return [];
+  });
+
+  const [albumLimit, setAlbumLimit] = useState<number>(() => {
+    try {
+      const saved = sessionStorage.getItem('searchAlbumsState');
+      if (saved) return JSON.parse(saved).albumLimit || 20;
+    } catch (e) {}
+    return 20;
+  });
+
+  useEffect(() => {
+    try {
+      sessionStorage.setItem(
+        'searchAlbumsState',
+        JSON.stringify({ searchQuery, filterKeywords, excludedKeywords, albumLimit })
+      );
+    } catch (e) {}
+  }, [searchQuery, filterKeywords, excludedKeywords, albumLimit]);
 
   const fetchKeywords = async () => {
     try {
